@@ -1,0 +1,70 @@
+MIT License
+
+Copyright (c) 2024 ISMAIL Platform - MIA Système
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+ISMAIL Platform License Notice
+
+This software is part of the ISMAIL Platform, a comprehensive digital ecosystem
+designed for the ECOWAS (Economic Community of West African States) region.
+
+The ISMAIL Platform includes:
+- Biometric authentication and KYC services
+- Electronic wallet and payment processing
+- E-commerce and marketplace functionality
+- Hotel booking and reservation systems
+- Real estate management tools
+- Debt collection and recovery services
+
+For commercial use, enterprise licensing, or custom implementations,
+please contact: licensing@ismail-platform.com
+
+Third-Party Components:
+This software may include third-party components with their own licenses.
+See the NOTICE file for details on third-party components and their licenses.
+
+Trademark Notice:
+ISMAIL is a trademark of MIA Système. Use of the ISMAIL name and logo
+requires explicit permission from MIA Système.
+
+Data Protection:
+This software is designed to comply with GDPR, UEMOA data protection
+regulations, and local privacy laws in West African countries.
+Users are responsible for ensuring compliance with applicable data
+protection regulations in their jurisdiction.
+
+Export Control:
+This software may be subject to export control laws and regulations.
+Users are responsible for compliance with applicable export control laws.
+
+Support and Maintenance:
+Community support is available through GitHub issues and discussions.
+Commercial support and maintenance contracts are available through
+MIA Système.
+
+Contact Information:
+- Website: https://ismail-platform.com
+- Email: contact@ismail-platform.com
+- Support: support@ismail-platform.com
+- Security: security@ismail-platform.com
+
+Last Updated: December 1, 2024

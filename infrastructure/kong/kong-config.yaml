@@ -1,0 +1,756 @@
+# Configuration Kong API Gateway - Plateforme ISMAIL
+# Déclarative configuration pour Kong avec tous les services et routes
+
+_format_version: "3.0"
+_transform: true
+
+# =====================================================
+# SERVICES UPSTREAM
+# =====================================================
+
+services:
+  # Service d'authentification
+  - name: auth-service
+    url: http://auth-service.ismail-core.svc.cluster.local:8080
+    protocol: http
+    host: auth-service.ismail-core.svc.cluster.local
+    port: 8080
+    path: /
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    retries: 5
+    tags:
+      - core
+      - authentication
+
+  # Service portefeuille
+  - name: wallet-service
+    url: http://wallet-service.ismail-core.svc.cluster.local:8080
+    protocol: http
+    host: wallet-service.ismail-core.svc.cluster.local
+    port: 8080
+    path: /
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    retries: 5
+    tags:
+      - core
+      - wallet
+
+  # Service notifications
+  - name: notification-service
+    url: http://notification-service.ismail-core.svc.cluster.local:8080
+    protocol: http
+    host: notification-service.ismail-core.svc.cluster.local
+    port: 8080
+    path: /
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    retries: 5
+    tags:
+      - core
+      - notifications
+
+  # Service utilisateurs
+  - name: user-service
+    url: http://user-service.ismail-core.svc.cluster.local:8080
+    protocol: http
+    host: user-service.ismail-core.svc.cluster.local
+    port: 8080
+    path: /
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    retries: 5
+    tags:
+      - core
+      - users
+
+  # Module Services
+  - name: services-module
+    url: http://services-module.ismail-business.svc.cluster.local:8080
+    protocol: http
+    host: services-module.ismail-business.svc.cluster.local
+    port: 8080
+    path: /
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    retries: 5
+    tags:
+      - business
+      - services
+
+  # Module Shop
+  - name: shop-module
+    url: http://shop-module.ismail-business.svc.cluster.local:8080
+    protocol: http
+    host: shop-module.ismail-business.svc.cluster.local
+    port: 8080
+    path: /
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    retries: 5
+    tags:
+      - business
+      - shop
+
+  # Module Booking
+  - name: booking-module
+    url: http://booking-module.ismail-business.svc.cluster.local:8080
+    protocol: http
+    host: booking-module.ismail-business.svc.cluster.local
+    port: 8080
+    path: /
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    retries: 5
+    tags:
+      - business
+      - booking
+
+  # Module Immobilier
+  - name: realestate-module
+    url: http://realestate-module.ismail-business.svc.cluster.local:8080
+    protocol: http
+    host: realestate-module.ismail-business.svc.cluster.local
+    port: 8080
+    path: /
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    retries: 5
+    tags:
+      - business
+      - realestate
+
+  # Module Recouvrement
+  - name: recovery-module
+    url: http://recovery-module.ismail-business.svc.cluster.local:8080
+    protocol: http
+    host: recovery-module.ismail-business.svc.cluster.local
+    port: 8080
+    path: /
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    retries: 5
+    tags:
+      - business
+      - recovery
+
+# =====================================================
+# ROUTES
+# =====================================================
+
+routes:
+  # Routes d'authentification (publiques)
+  - name: auth-public-routes
+    service: auth-service
+    protocols:
+      - http
+      - https
+    methods:
+      - GET
+      - POST
+    paths:
+      - /api/auth/register
+      - /api/auth/login
+      - /api/auth/refresh
+      - /api/auth/verify
+      - /api/auth/forgot-password
+      - /api/auth/reset-password
+    strip_path: false
+    preserve_host: false
+    tags:
+      - public
+      - auth
+
+  # Routes d'authentification (protégées)
+  - name: auth-protected-routes
+    service: auth-service
+    protocols:
+      - http
+      - https
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    paths:
+      - /api/auth/profile
+      - /api/auth/change-password
+      - /api/auth/logout
+      - /api/auth/sessions
+    strip_path: false
+    preserve_host: false
+    tags:
+      - protected
+      - auth
+
+  # Routes portefeuille (toutes protégées)
+  - name: wallet-routes
+    service: wallet-service
+    protocols:
+      - http
+      - https
+    methods:
+      - GET
+      - POST
+      - PUT
+    paths:
+      - /api/wallet
+    strip_path: false
+    preserve_host: false
+    tags:
+      - protected
+      - wallet
+
+  # Routes notifications
+  - name: notification-routes
+    service: notification-service
+    protocols:
+      - http
+      - https
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    paths:
+      - /api/notifications
+    strip_path: false
+    preserve_host: false
+    tags:
+      - protected
+      - notifications
+
+  # Routes utilisateurs
+  - name: user-routes
+    service: user-service
+    protocols:
+      - http
+      - https
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    paths:
+      - /api/users
+    strip_path: false
+    preserve_host: false
+    tags:
+      - protected
+      - users
+
+  # Routes module Services
+  - name: services-routes
+    service: services-module
+    protocols:
+      - http
+      - https
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    paths:
+      - /api/services
+    strip_path: false
+    preserve_host: false
+    tags:
+      - protected
+      - services
+
+  # Routes module Shop
+  - name: shop-routes
+    service: shop-module
+    protocols:
+      - http
+      - https
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    paths:
+      - /api/shop
+    strip_path: false
+    preserve_host: false
+    tags:
+      - protected
+      - shop
+
+  # Routes module Booking
+  - name: booking-routes
+    service: booking-module
+    protocols:
+      - http
+      - https
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    paths:
+      - /api/booking
+    strip_path: false
+    preserve_host: false
+    tags:
+      - protected
+      - booking
+
+  # Routes module Immobilier
+  - name: realestate-routes
+    service: realestate-module
+    protocols:
+      - http
+      - https
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    paths:
+      - /api/realestate
+    strip_path: false
+    preserve_host: false
+    tags:
+      - protected
+      - realestate
+
+  # Routes module Recouvrement
+  - name: recovery-routes
+    service: recovery-module
+    protocols:
+      - http
+      - https
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    paths:
+      - /api/recovery
+    strip_path: false
+    preserve_host: false
+    tags:
+      - protected
+      - recovery
+
+  # Route de santé globale
+  - name: health-route
+    service: auth-service
+    protocols:
+      - http
+      - https
+    methods:
+      - GET
+    paths:
+      - /health
+      - /api/health
+    strip_path: false
+    preserve_host: false
+    tags:
+      - public
+      - health
+
+# =====================================================
+# PLUGINS GLOBAUX
+# =====================================================
+
+plugins:
+  # Plugin CORS global
+  - name: cors
+    config:
+      origins:
+        - "https://app.ismail-platform.com"
+        - "https://admin.ismail-platform.com"
+        - "https://mobile.ismail-platform.com"
+        - "http://localhost:3000"
+        - "http://localhost:3001"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - PATCH
+        - OPTIONS
+      headers:
+        - Accept
+        - Accept-Version
+        - Authorization
+        - Content-Length
+        - Content-MD5
+        - Content-Type
+        - Date
+        - X-Auth-Token
+        - X-Requested-With
+        - X-User-ID
+        - X-Device-ID
+      exposed_headers:
+        - X-Auth-Token
+        - X-RateLimit-Limit
+        - X-RateLimit-Remaining
+        - X-RateLimit-Reset
+      credentials: true
+      max_age: 3600
+    tags:
+      - global
+      - cors
+
+  # Plugin de logging global
+  - name: file-log
+    config:
+      path: /tmp/access.log
+      reopen: true
+    tags:
+      - global
+      - logging
+
+  # Plugin Prometheus pour métriques
+  - name: prometheus
+    config:
+      per_consumer: true
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+    tags:
+      - global
+      - monitoring
+
+  # Plugin de limitation globale
+  - name: rate-limiting
+    config:
+      minute: 1000
+      hour: 10000
+      day: 100000
+      policy: redis
+      redis_host: ismail-redis.af-south-1.cache.amazonaws.com
+      redis_port: 6379
+      redis_database: 3
+      redis_timeout: 2000
+      hide_client_headers: false
+    tags:
+      - global
+      - rate-limiting
+
+# =====================================================
+# PLUGINS SPÉCIFIQUES AUX ROUTES
+# =====================================================
+
+# Plugin JWT pour routes protégées
+- name: jwt
+  route: auth-protected-routes
+  config:
+    uri_param_names:
+      - jwt
+    cookie_names:
+      - jwt
+    header_names:
+      - authorization
+    claims_to_verify:
+      - exp
+      - iat
+    key_claim_name: iss
+    secret_is_base64: false
+    run_on_preflight: true
+  tags:
+    - auth
+    - jwt
+
+- name: jwt
+  route: wallet-routes
+  config:
+    uri_param_names:
+      - jwt
+    cookie_names:
+      - jwt
+    header_names:
+      - authorization
+    claims_to_verify:
+      - exp
+      - iat
+    key_claim_name: iss
+    secret_is_base64: false
+    run_on_preflight: true
+  tags:
+    - wallet
+    - jwt
+
+- name: jwt
+  route: notification-routes
+  config:
+    uri_param_names:
+      - jwt
+    cookie_names:
+      - jwt
+    header_names:
+      - authorization
+    claims_to_verify:
+      - exp
+      - iat
+    key_claim_name: iss
+    secret_is_base64: false
+    run_on_preflight: true
+  tags:
+    - notifications
+    - jwt
+
+- name: jwt
+  route: user-routes
+  config:
+    uri_param_names:
+      - jwt
+    cookie_names:
+      - jwt
+    header_names:
+      - authorization
+    claims_to_verify:
+      - exp
+      - iat
+    key_claim_name: iss
+    secret_is_base64: false
+    run_on_preflight: true
+  tags:
+    - users
+    - jwt
+
+- name: jwt
+  route: services-routes
+  config:
+    uri_param_names:
+      - jwt
+    cookie_names:
+      - jwt
+    header_names:
+      - authorization
+    claims_to_verify:
+      - exp
+      - iat
+    key_claim_name: iss
+    secret_is_base64: false
+    run_on_preflight: true
+  tags:
+    - services
+    - jwt
+
+- name: jwt
+  route: shop-routes
+  config:
+    uri_param_names:
+      - jwt
+    cookie_names:
+      - jwt
+    header_names:
+      - authorization
+    claims_to_verify:
+      - exp
+      - iat
+    key_claim_name: iss
+    secret_is_base64: false
+    run_on_preflight: true
+  tags:
+    - shop
+    - jwt
+
+- name: jwt
+  route: booking-routes
+  config:
+    uri_param_names:
+      - jwt
+    cookie_names:
+      - jwt
+    header_names:
+      - authorization
+    claims_to_verify:
+      - exp
+      - iat
+    key_claim_name: iss
+    secret_is_base64: false
+    run_on_preflight: true
+  tags:
+    - booking
+    - jwt
+
+- name: jwt
+  route: realestate-routes
+  config:
+    uri_param_names:
+      - jwt
+    cookie_names:
+      - jwt
+    header_names:
+      - authorization
+    claims_to_verify:
+      - exp
+      - iat
+    key_claim_name: iss
+    secret_is_base64: false
+    run_on_preflight: true
+  tags:
+    - realestate
+    - jwt
+
+- name: jwt
+  route: recovery-routes
+  config:
+    uri_param_names:
+      - jwt
+    cookie_names:
+      - jwt
+    header_names:
+      - authorization
+    claims_to_verify:
+      - exp
+      - iat
+    key_claim_name: iss
+    secret_is_base64: false
+    run_on_preflight: true
+  tags:
+    - recovery
+    - jwt
+
+# Rate limiting spécifique pour l'authentification
+- name: rate-limiting
+  route: auth-public-routes
+  config:
+    minute: 20
+    hour: 100
+    policy: redis
+    redis_host: ismail-redis.af-south-1.cache.amazonaws.com
+    redis_port: 6379
+    redis_database: 3
+    fault_tolerant: true
+    hide_client_headers: false
+  tags:
+    - auth
+    - rate-limiting
+
+# Rate limiting pour le portefeuille (plus restrictif)
+- name: rate-limiting
+  route: wallet-routes
+  config:
+    minute: 50
+    hour: 500
+    policy: redis
+    redis_host: ismail-redis.af-south-1.cache.amazonaws.com
+    redis_port: 6379
+    redis_database: 3
+    fault_tolerant: true
+    hide_client_headers: false
+  tags:
+    - wallet
+    - rate-limiting
+
+# =====================================================
+# CONSUMERS (Clés JWT)
+# =====================================================
+
+consumers:
+  # Consumer pour l'application mobile
+  - username: ismail-mobile-app
+    custom_id: mobile-app-v1
+    tags:
+      - mobile
+      - app
+
+  # Consumer pour l'application web
+  - username: ismail-web-app
+    custom_id: web-app-v1
+    tags:
+      - web
+      - app
+
+  # Consumer pour l'administration
+  - username: ismail-admin-app
+    custom_id: admin-app-v1
+    tags:
+      - admin
+      - app
+
+# =====================================================
+# CERTIFICATS SSL
+# =====================================================
+
+certificates:
+  - cert: |
+      -----BEGIN CERTIFICATE-----
+      # Certificat SSL pour *.ismail-platform.com
+      # À remplacer par le vrai certificat
+      -----END CERTIFICATE-----
+    key: |
+      -----BEGIN PRIVATE KEY-----
+      # Clé privée SSL
+      # À remplacer par la vraie clé
+      -----END PRIVATE KEY-----
+    snis:
+      - "*.ismail-platform.com"
+      - "ismail-platform.com"
+    tags:
+      - ssl
+      - wildcard
+
+# =====================================================
+# UPSTREAMS (Load Balancing)
+# =====================================================
+
+upstreams:
+  # Upstream pour les services core avec load balancing
+  - name: core-services-upstream
+    algorithm: round-robin
+    hash_on: none
+    hash_fallback: none
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        healthy:
+          interval: 10
+          successes: 2
+        unhealthy:
+          interval: 10
+          http_failures: 3
+          timeouts: 3
+      passive:
+        healthy:
+          successes: 3
+        unhealthy:
+          http_failures: 3
+          timeouts: 3
+    tags:
+      - core
+      - load-balancing
+
+  # Upstream pour les modules business
+  - name: business-modules-upstream
+    algorithm: round-robin
+    hash_on: none
+    hash_fallback: none
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        healthy:
+          interval: 10
+          successes: 2
+        unhealthy:
+          interval: 10
+          http_failures: 3
+          timeouts: 3
+      passive:
+        healthy:
+          successes: 3
+        unhealthy:
+          http_failures: 3
+          timeouts: 3
+    tags:
+      - business
+      - load-balancing

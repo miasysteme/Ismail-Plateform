@@ -1,0 +1,339 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "ISMAIL Core Services",
+    "tags": ["ismail", "core-services", "auth", "wallet"],
+    "style": "dark",
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Services Health",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"ismail-services\"}",
+            "legendFormat": "{{kubernetes_service_name}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "green", "value": 1}
+              ]
+            },
+            "mappings": [
+              {"options": {"0": {"text": "DOWN"}}, "type": "value"},
+              {"options": {"1": {"text": "UP"}}, "type": "value"}
+            ]
+          }
+        },
+        "gridPos": {"h": 6, "w": 24, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Request Rate by Service",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total{job=\"ismail-services\"}[5m])) by (kubernetes_service_name)",
+            "legendFormat": "{{kubernetes_service_name}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 10
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6}
+      },
+      {
+        "id": 3,
+        "title": "Response Time P95",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"ismail-services\"}[5m])) by (kubernetes_service_name, le))",
+            "legendFormat": "{{kubernetes_service_name}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6}
+      },
+      {
+        "id": 4,
+        "title": "Auth Service - Login Attempts",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(auth_login_attempts_total[5m])) by (status)",
+            "legendFormat": "{{status}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps"
+          }
+        },
+        "gridPos": {"h": 6, "w": 8, "x": 0, "y": 14}
+      },
+      {
+        "id": 5,
+        "title": "Auth Service - Active Sessions",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "auth_active_sessions_total",
+            "legendFormat": "Active Sessions"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {"mode": "palette-classic"}
+          }
+        },
+        "gridPos": {"h": 6, "w": 8, "x": 8, "y": 14}
+      },
+      {
+        "id": 6,
+        "title": "Auth Service - KYC Status",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "kyc_verifications_total",
+            "legendFormat": "{{status}}"
+          }
+        ],
+        "gridPos": {"h": 6, "w": 8, "x": 16, "y": 14}
+      },
+      {
+        "id": 7,
+        "title": "Wallet Service - Transaction Rate",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(wallet_transactions_total[5m])) by (status)",
+            "legendFormat": "{{status}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps"
+          }
+        },
+        "gridPos": {"h": 6, "w": 8, "x": 0, "y": 20}
+      },
+      {
+        "id": 8,
+        "title": "Wallet Service - Total Balance",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "wallet_total_balance_fcfa",
+            "legendFormat": "Total Balance"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyFCFA",
+            "color": {"mode": "palette-classic"}
+          }
+        },
+        "gridPos": {"h": 6, "w": 8, "x": 8, "y": 20}
+      },
+      {
+        "id": 9,
+        "title": "Wallet Service - Commission Payments",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(wallet_commissions_paid_total[5m]))",
+            "legendFormat": "Commissions Paid"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyFCFA"
+          }
+        },
+        "gridPos": {"h": 6, "w": 8, "x": 16, "y": 20}
+      },
+      {
+        "id": 10,
+        "title": "JVM Memory Usage",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "jvm_memory_used_bytes{job=\"ismail-services\"} / jvm_memory_max_bytes{job=\"ismail-services\"} * 100",
+            "legendFormat": "{{kubernetes_service_name}} - {{area}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 70},
+                {"color": "red", "value": 90}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 6, "w": 12, "x": 0, "y": 26}
+      },
+      {
+        "id": 11,
+        "title": "JVM Garbage Collection",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(jvm_gc_collection_seconds_sum{job=\"ismail-services\"}[5m])",
+            "legendFormat": "{{kubernetes_service_name}} - {{gc}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s"
+          }
+        },
+        "gridPos": {"h": 6, "w": 12, "x": 12, "y": 26}
+      },
+      {
+        "id": 12,
+        "title": "Database Connection Pool",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "hikaricp_connections_active{job=\"ismail-services\"}",
+            "legendFormat": "{{kubernetes_service_name}} - Active"
+          },
+          {
+            "expr": "hikaricp_connections_idle{job=\"ismail-services\"}",
+            "legendFormat": "{{kubernetes_service_name}} - Idle"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        },
+        "gridPos": {"h": 6, "w": 8, "x": 0, "y": 32}
+      },
+      {
+        "id": 13,
+        "title": "Redis Cache Hit Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total) * 100",
+            "legendFormat": "Hit Rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 80},
+                {"color": "green", "value": 95}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 6, "w": 8, "x": 8, "y": 32}
+      },
+      {
+        "id": 14,
+        "title": "Error Rate by Service",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total{job=\"ismail-services\", status=~\"5..\"}[5m])) by (kubernetes_service_name) / sum(rate(http_requests_total{job=\"ismail-services\"}[5m])) by (kubernetes_service_name) * 100",
+            "legendFormat": "{{kubernetes_service_name}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 1},
+                {"color": "red", "value": 5}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 6, "w": 8, "x": 16, "y": 32}
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "service",
+          "type": "query",
+          "query": "label_values(up{job=\"ismail-services\"}, kubernetes_service_name)",
+          "refresh": 1,
+          "includeAll": true,
+          "allValue": ".*"
+        },
+        {
+          "name": "instance",
+          "type": "query",
+          "query": "label_values(up{job=\"ismail-services\", kubernetes_service_name=~\"$service\"}, instance)",
+          "refresh": 1,
+          "includeAll": true,
+          "allValue": ".*"
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "name": "Service Deployments",
+          "datasource": "Prometheus",
+          "expr": "changes(up{job=\"ismail-services\"}[5m]) > 0",
+          "titleFormat": "Service Restart",
+          "textFormat": "{{kubernetes_service_name}} restarted"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,338 @@
+# Règles d'alerte Prometheus pour la plateforme ISMAIL
+# Alertes pour infrastructure, services et métriques business
+
+groups:
+  # =====================================================
+  # ALERTES INFRASTRUCTURE
+  # =====================================================
+  
+  - name: infrastructure.rules
+    rules:
+      # Nœuds Kubernetes
+      - alert: NodeDown
+        expr: up{job="kubernetes-nodes"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: kubernetes
+        annotations:
+          summary: "Nœud Kubernetes indisponible"
+          description: "Le nœud {{ $labels.instance }} est indisponible depuis plus de 5 minutes."
+          
+      - alert: NodeHighCPU
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          service: kubernetes
+        annotations:
+          summary: "CPU élevé sur nœud"
+          description: "Le nœud {{ $labels.instance }} a un usage CPU de {{ $value }}% depuis plus de 10 minutes."
+          
+      - alert: NodeHighMemory
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+          service: kubernetes
+        annotations:
+          summary: "Mémoire élevée sur nœud"
+          description: "Le nœud {{ $labels.instance }} a un usage mémoire de {{ $value }}% depuis plus de 10 minutes."
+          
+      - alert: NodeDiskSpaceHigh
+        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+          service: kubernetes
+        annotations:
+          summary: "Espace disque critique"
+          description: "Le système de fichiers {{ $labels.mountpoint }} sur {{ $labels.instance }} est plein à {{ $value }}%."
+
+  # =====================================================
+  # ALERTES KONG API GATEWAY
+  # =====================================================
+  
+  - name: kong.rules
+    rules:
+      - alert: KongDown
+        expr: up{job="kong"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: kong
+        annotations:
+          summary: "Kong API Gateway indisponible"
+          description: "Kong API Gateway est indisponible depuis plus de 2 minutes."
+          
+      - alert: KongHighLatency
+        expr: histogram_quantile(0.95, rate(kong_latency_bucket[5m])) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: kong
+        annotations:
+          summary: "Latence élevée Kong"
+          description: "La latence P95 de Kong est de {{ $value }}ms depuis plus de 5 minutes."
+          
+      - alert: KongHighErrorRate
+        expr: rate(kong_http_status{code=~"5.."}[5m]) / rate(kong_http_status[5m]) * 100 > 5
+        for: 5m
+        labels:
+          severity: critical
+          service: kong
+        annotations:
+          summary: "Taux d'erreur élevé Kong"
+          description: "Kong a un taux d'erreur 5xx de {{ $value }}% depuis plus de 5 minutes."
+          
+      - alert: KongUpstreamDown
+        expr: kong_upstream_target_health == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: kong
+        annotations:
+          summary: "Service upstream indisponible"
+          description: "Le service upstream {{ $labels.upstream }} est indisponible."
+
+  # =====================================================
+  # ALERTES SERVICES CORE
+  # =====================================================
+  
+  - name: core-services.rules
+    rules:
+      # Service d'authentification
+      - alert: AuthServiceDown
+        expr: up{job="ismail-services", kubernetes_service_name="auth-service"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: auth-service
+        annotations:
+          summary: "Service d'authentification indisponible"
+          description: "Le service d'authentification est indisponible depuis plus de 2 minutes."
+          
+      - alert: AuthServiceHighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="ismail-services", kubernetes_service_name="auth-service"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: auth-service
+        annotations:
+          summary: "Latence élevée service auth"
+          description: "La latence P95 du service auth est de {{ $value }}s depuis plus de 5 minutes."
+          
+      - alert: AuthServiceHighErrorRate
+        expr: rate(http_requests_total{job="ismail-services", kubernetes_service_name="auth-service", status=~"5.."}[5m]) / rate(http_requests_total{job="ismail-services", kubernetes_service_name="auth-service"}[5m]) * 100 > 5
+        for: 5m
+        labels:
+          severity: critical
+          service: auth-service
+        annotations:
+          summary: "Taux d'erreur élevé service auth"
+          description: "Le service auth a un taux d'erreur de {{ $value }}% depuis plus de 5 minutes."
+          
+      # Service portefeuille
+      - alert: WalletServiceDown
+        expr: up{job="ismail-services", kubernetes_service_name="wallet-service"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: wallet-service
+        annotations:
+          summary: "Service portefeuille indisponible"
+          description: "Le service portefeuille est indisponible depuis plus de 2 minutes."
+          
+      - alert: WalletTransactionFailureHigh
+        expr: rate(wallet_transactions_total{status="failed"}[5m]) / rate(wallet_transactions_total[5m]) * 100 > 10
+        for: 5m
+        labels:
+          severity: critical
+          service: wallet-service
+        annotations:
+          summary: "Taux d'échec transactions élevé"
+          description: "Le taux d'échec des transactions est de {{ $value }}% depuis plus de 5 minutes."
+
+  # =====================================================
+  # ALERTES BASES DE DONNÉES
+  # =====================================================
+  
+  - name: databases.rules
+    rules:
+      # PostgreSQL
+      - alert: PostgreSQLDown
+        expr: up{job="postgresql"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: postgresql
+        annotations:
+          summary: "PostgreSQL indisponible"
+          description: "PostgreSQL est indisponible depuis plus de 2 minutes."
+          
+      - alert: PostgreSQLHighConnections
+        expr: pg_stat_database_numbackends / pg_settings_max_connections * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: postgresql
+        annotations:
+          summary: "Connexions PostgreSQL élevées"
+          description: "PostgreSQL utilise {{ $value }}% de ses connexions maximum."
+          
+      - alert: PostgreSQLSlowQueries
+        expr: rate(pg_stat_statements_mean_time_seconds[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: postgresql
+        annotations:
+          summary: "Requêtes PostgreSQL lentes"
+          description: "PostgreSQL a des requêtes avec un temps moyen de {{ $value }}s."
+          
+      # MongoDB
+      - alert: MongoDBDown
+        expr: up{job="mongodb"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: mongodb
+        annotations:
+          summary: "MongoDB indisponible"
+          description: "MongoDB est indisponible depuis plus de 2 minutes."
+          
+      - alert: MongoDBReplicationLag
+        expr: mongodb_replset_member_replication_lag > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: mongodb
+        annotations:
+          summary: "Lag de réplication MongoDB"
+          description: "Le lag de réplication MongoDB est de {{ $value }}s."
+          
+      # Redis
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: redis
+        annotations:
+          summary: "Redis indisponible"
+          description: "Redis est indisponible depuis plus de 2 minutes."
+          
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: "Utilisation mémoire Redis élevée"
+          description: "Redis utilise {{ $value }}% de sa mémoire maximum."
+          
+      - alert: RedisLowHitRate
+        expr: rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) * 100 < 90
+        for: 10m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: "Taux de hit Redis faible"
+          description: "Le taux de hit Redis est de {{ $value }}% depuis plus de 10 minutes."
+
+  # =====================================================
+  # ALERTES BUSINESS METRICS
+  # =====================================================
+  
+  - name: business.rules
+    rules:
+      # Authentification
+      - alert: HighLoginFailureRate
+        expr: rate(auth_login_attempts_total{status="failed"}[5m]) / rate(auth_login_attempts_total[5m]) * 100 > 20
+        for: 5m
+        labels:
+          severity: warning
+          service: auth-service
+        annotations:
+          summary: "Taux d'échec connexion élevé"
+          description: "Le taux d'échec des connexions est de {{ $value }}% depuis plus de 5 minutes."
+          
+      - alert: SuspiciousLoginActivity
+        expr: rate(auth_login_attempts_total{status="failed"}[1m]) > 10
+        for: 2m
+        labels:
+          severity: critical
+          service: auth-service
+        annotations:
+          summary: "Activité de connexion suspecte"
+          description: "Plus de 10 tentatives de connexion échouées par minute détectées."
+          
+      # Portefeuille
+      - alert: LowWalletBalance
+        expr: wallet_total_balance_fcfa < 1000000
+        for: 5m
+        labels:
+          severity: warning
+          service: wallet-service
+        annotations:
+          summary: "Solde total portefeuilles faible"
+          description: "Le solde total des portefeuilles est de {{ $value }} FCFA."
+          
+      - alert: HighTransactionVolume
+        expr: rate(wallet_transactions_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: info
+          service: wallet-service
+        annotations:
+          summary: "Volume de transactions élevé"
+          description: "Plus de 100 transactions par minute détectées."
+          
+      # KYC
+      - alert: KYCBacklog
+        expr: kyc_pending_verifications > 100
+        for: 30m
+        labels:
+          severity: warning
+          service: auth-service
+        annotations:
+          summary: "Arriéré de vérifications KYC"
+          description: "{{ $value }} vérifications KYC en attente depuis plus de 30 minutes."
+
+  # =====================================================
+  # ALERTES SÉCURITÉ
+  # =====================================================
+  
+  - name: security.rules
+    rules:
+      - alert: BruteForceAttack
+        expr: rate(auth_login_attempts_total{status="failed"}[1m]) > 50
+        for: 1m
+        labels:
+          severity: critical
+          service: auth-service
+        annotations:
+          summary: "Attaque par force brute détectée"
+          description: "Plus de 50 tentatives de connexion échouées par minute depuis {{ $labels.source_ip }}."
+          
+      - alert: UnauthorizedAPIAccess
+        expr: rate(kong_http_status{code="401"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: kong
+        annotations:
+          summary: "Accès API non autorisé"
+          description: "Plus de 10 tentatives d'accès non autorisé par minute détectées."
+          
+      - alert: SuspiciousTransactionPattern
+        expr: wallet_large_transactions_count > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: wallet-service
+        annotations:
+          summary: "Pattern de transactions suspect"
+          description: "{{ $value }} transactions importantes détectées en 5 minutes."

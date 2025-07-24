@@ -1,0 +1,220 @@
+# Namespaces Kubernetes - Plateforme ISMAIL
+# Organisation par environnement et fonction
+
+---
+# Namespace pour les services core
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ismail-core
+  labels:
+    name: ismail-core
+    tier: core
+    project: ismail
+  annotations:
+    description: "Services core de la plateforme ISMAIL"
+---
+# Namespace pour les modules métier
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ismail-business
+  labels:
+    name: ismail-business
+    tier: business
+    project: ismail
+  annotations:
+    description: "Modules métier ISMAIL (Services, Shop, Booking, etc.)"
+---
+# Namespace pour les bases de données
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ismail-data
+  labels:
+    name: ismail-data
+    tier: data
+    project: ismail
+  annotations:
+    description: "Services de données (MongoDB, Redis interne)"
+---
+# Namespace pour le monitoring
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ismail-monitoring
+  labels:
+    name: ismail-monitoring
+    tier: monitoring
+    project: ismail
+  annotations:
+    description: "Stack de monitoring (Prometheus, Grafana, Jaeger)"
+---
+# Namespace pour l'ingress et load balancing
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ismail-ingress
+  labels:
+    name: ismail-ingress
+    tier: ingress
+    project: ismail
+  annotations:
+    description: "Ingress controllers et load balancers"
+---
+# Namespace pour les jobs et tâches batch
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ismail-jobs
+  labels:
+    name: ismail-jobs
+    tier: jobs
+    project: ismail
+  annotations:
+    description: "Jobs batch et tâches programmées"
+---
+# Network Policies pour sécuriser les communications
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-default
+  namespace: ismail-core
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-core-to-data
+  namespace: ismail-core
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: ismail-data
+    ports:
+    - protocol: TCP
+      port: 5432  # PostgreSQL
+    - protocol: TCP
+      port: 27017 # MongoDB
+    - protocol: TCP
+      port: 6379  # Redis
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-business-to-core
+  namespace: ismail-business
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: ismail-core
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+# Resource Quotas pour limiter l'utilisation des ressources
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: core-quota
+  namespace: ismail-core
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+    services: "10"
+    persistentvolumeclaims: "5"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: business-quota
+  namespace: ismail-business
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    pods: "50"
+    services: "20"
+    persistentvolumeclaims: "10"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: data-quota
+  namespace: ismail-data
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "10"
+    services: "5"
+    persistentvolumeclaims: "10"
+    requests.storage: "100Gi"
+---
+# Limit Ranges pour définir les limites par défaut
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+  namespace: ismail-core
+spec:
+  limits:
+  - default:
+      cpu: "500m"
+      memory: "512Mi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "128Mi"
+    type: Container
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+  namespace: ismail-business
+spec:
+  limits:
+  - default:
+      cpu: "500m"
+      memory: "512Mi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "128Mi"
+    type: Container
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+  namespace: ismail-data
+spec:
+  limits:
+  - default:
+      cpu: "1"
+      memory: "1Gi"
+    defaultRequest:
+      cpu: "250m"
+      memory: "256Mi"
+    type: Container

@@ -1,0 +1,426 @@
+# Configuration MongoDB - Plateforme ISMAIL
+# Déploiement MongoDB avec réplication et haute disponibilité
+
+# Configuration globale
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: "gp3"
+
+# Configuration de l'image
+image:
+  registry: docker.io
+  repository: bitnami/mongodb
+  tag: 7.0.4-debian-11-r0
+  pullPolicy: IfNotPresent
+
+# Configuration d'authentification
+auth:
+  enabled: true
+  rootUser: "admin"
+  rootPassword: "IsmaIl2024!MongoDB#Secure"
+  
+  # Utilisateurs personnalisés
+  usernames:
+    - "ismail_app"
+    - "ismail_readonly"
+    - "ismail_backup"
+  
+  passwords:
+    - "IsmaIl2024!App#MongoDB"
+    - "IsmaIl2024!ReadOnly#MongoDB"
+    - "IsmaIl2024!Backup#MongoDB"
+  
+  databases:
+    - "ismail_main"
+    - "ismail_main"
+    - "ismail_main"
+
+# Configuration de l'architecture
+architecture: replicaset
+replicaCount: 3
+
+# Configuration des ressources
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2
+    memory: 4Gi
+
+# Configuration du stockage persistant
+persistence:
+  enabled: true
+  storageClass: "gp3"
+  size: 100Gi
+  accessModes:
+    - ReadWriteOnce
+  annotations:
+    volume.beta.kubernetes.io/storage-provisioner: ebs.csi.aws.com
+
+# Configuration des sondes de santé
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 20
+  timeoutSeconds: 10
+  failureThreshold: 6
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 10
+  failureThreshold: 6
+  successThreshold: 1
+
+# Configuration du service
+service:
+  type: ClusterIP
+  ports:
+    mongodb: 27017
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9216"
+
+# Configuration de sécurité
+podSecurityContext:
+  enabled: true
+  fsGroup: 1001
+  runAsUser: 1001
+  runAsNonRoot: true
+
+containerSecurityContext:
+  enabled: true
+  runAsUser: 1001
+  runAsNonRoot: true
+  readOnlyRootFilesystem: false
+  allowPrivilegeEscalation: false
+
+# Configuration réseau
+networkPolicy:
+  enabled: true
+  allowExternal: false
+  explicitNamespacesSelector: {}
+
+# Configuration des métriques
+metrics:
+  enabled: true
+  
+  image:
+    registry: docker.io
+    repository: bitnami/mongodb-exporter
+    tag: 0.40.0-debian-11-r52
+    pullPolicy: IfNotPresent
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  
+  service:
+    type: ClusterIP
+    port: 9216
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9216"
+      prometheus.io/path: "/metrics"
+
+  serviceMonitor:
+    enabled: true
+    namespace: ismail-monitoring
+    interval: 30s
+    scrapeTimeout: 10s
+
+# Configuration des backups
+backup:
+  enabled: true
+  cronjob:
+    schedule: "0 2 * * *"  # Tous les jours à 2h du matin
+    historyLimit: 7
+    restartPolicy: OnFailure
+    
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  persistence:
+    enabled: true
+    storageClass: "gp3"
+    size: 50Gi
+
+# Configuration de l'arbiter (pour nombre pair de nœuds)
+arbiter:
+  enabled: true
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# Configuration des labels et annotations
+commonLabels:
+  app.kubernetes.io/name: mongodb
+  app.kubernetes.io/instance: ismail-mongodb
+  app.kubernetes.io/component: database
+  project: ismail
+
+commonAnnotations:
+  description: "MongoDB pour la plateforme ISMAIL"
+
+# Configuration des tolérances et affinités
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: mongodb
+            app.kubernetes.io/instance: ismail-mongodb
+        topologyKey: kubernetes.io/hostname
+
+nodeSelector:
+  node-role: database
+
+# Configuration avancée MongoDB
+configuration: |
+  # Configuration MongoDB pour ISMAIL
+  
+  # Stockage
+  storage:
+    dbPath: /bitnami/mongodb/data/db
+    journal:
+      enabled: true
+    wiredTiger:
+      engineConfig:
+        cacheSizeGB: 2
+        journalCompressor: snappy
+        directoryForIndexes: false
+      collectionConfig:
+        blockCompressor: snappy
+      indexConfig:
+        prefixCompression: true
+  
+  # Réseau
+  net:
+    port: 27017
+    bindIpAll: true
+    maxIncomingConnections: 1000
+  
+  # Sécurité
+  security:
+    authorization: enabled
+    keyFile: /opt/bitnami/mongodb/conf/keyfile
+  
+  # Réplication
+  replication:
+    replSetName: rs0
+    oplogSizeMB: 1024
+  
+  # Logging
+  systemLog:
+    destination: file
+    logAppend: true
+    path: /opt/bitnami/mongodb/logs/mongodb.log
+    logRotate: reopen
+    component:
+      accessControl:
+        verbosity: 1
+      command:
+        verbosity: 1
+  
+  # Profiling
+  operationProfiling:
+    mode: slowOp
+    slowOpThresholdMs: 1000
+  
+  # Paramètres de performance
+  setParameter:
+    enableLocalhostAuthBypass: false
+    authenticationMechanisms: SCRAM-SHA-1,SCRAM-SHA-256
+    maxLogSizeKB: 10240
+
+# Configuration des scripts d'initialisation
+initdbScripts:
+  00-init-databases.js: |
+    // Script d'initialisation MongoDB pour ISMAIL
+    
+    // Connexion en tant qu'admin
+    db = db.getSiblingDB('admin');
+    
+    // Création des utilisateurs
+    db.createUser({
+      user: 'ismail_app',
+      pwd: 'IsmaIl2024!App#MongoDB',
+      roles: [
+        { role: 'readWrite', db: 'ismail_main' },
+        { role: 'dbAdmin', db: 'ismail_main' }
+      ]
+    });
+    
+    db.createUser({
+      user: 'ismail_readonly',
+      pwd: 'IsmaIl2024!ReadOnly#MongoDB',
+      roles: [
+        { role: 'read', db: 'ismail_main' }
+      ]
+    });
+    
+    db.createUser({
+      user: 'ismail_backup',
+      pwd: 'IsmaIl2024!Backup#MongoDB',
+      roles: [
+        { role: 'backup', db: 'admin' },
+        { role: 'read', db: 'ismail_main' }
+      ]
+    });
+    
+    // Basculer vers la base principale
+    db = db.getSiblingDB('ismail_main');
+    
+    // Création des collections avec validation
+    db.createCollection('user_profiles', {
+      validator: {
+        $jsonSchema: {
+          bsonType: 'object',
+          required: ['userId', 'createdAt'],
+          properties: {
+            userId: {
+              bsonType: 'string',
+              description: 'UUID de référence utilisateur'
+            },
+            avatar: {
+              bsonType: 'object',
+              properties: {
+                url: { bsonType: 'string' },
+                thumbnailUrl: { bsonType: 'string' }
+              }
+            },
+            location: {
+              bsonType: 'object',
+              properties: {
+                type: { enum: ['Point'] },
+                coordinates: {
+                  bsonType: 'array',
+                  minItems: 2,
+                  maxItems: 2
+                }
+              }
+            },
+            createdAt: { bsonType: 'date' },
+            updatedAt: { bsonType: 'date' }
+          }
+        }
+      }
+    });
+    
+    db.createCollection('products', {
+      validator: {
+        $jsonSchema: {
+          bsonType: 'object',
+          required: ['merchantId', 'name', 'price', 'status'],
+          properties: {
+            merchantId: {
+              bsonType: 'string',
+              description: 'UUID du marchand'
+            },
+            name: {
+              bsonType: 'string',
+              minLength: 1,
+              maxLength: 255
+            },
+            price: {
+              bsonType: 'decimal',
+              minimum: 0
+            },
+            status: {
+              enum: ['ACTIVE', 'INACTIVE', 'DRAFT']
+            }
+          }
+        }
+      }
+    });
+    
+    db.createCollection('reviews');
+    db.createCollection('notifications');
+    db.createCollection('analytics_events');
+    
+    // Création des index
+    
+    // Index pour user_profiles
+    db.user_profiles.createIndex({ 'userId': 1 }, { unique: true });
+    db.user_profiles.createIndex({ 'location': '2dsphere' });
+    db.user_profiles.createIndex({ 'createdAt': 1 });
+    
+    // Index pour products
+    db.products.createIndex({ 'merchantId': 1 });
+    db.products.createIndex({ 'category': 1, 'subcategory': 1 });
+    db.products.createIndex({ 'name': 'text', 'description': 'text' });
+    db.products.createIndex({ 'price': 1 });
+    db.products.createIndex({ 'rating.average': -1 });
+    db.products.createIndex({ 'status': 1 });
+    db.products.createIndex({ 'createdAt': 1 });
+    
+    // Index pour reviews
+    db.reviews.createIndex({ 'targetId': 1, 'targetType': 1 });
+    db.reviews.createIndex({ 'authorId': 1 });
+    db.reviews.createIndex({ 'rating': -1 });
+    db.reviews.createIndex({ 'status': 1 });
+    db.reviews.createIndex({ 'createdAt': -1 });
+    
+    // Index pour notifications
+    db.notifications.createIndex({ 'userId': 1, 'createdAt': -1 });
+    db.notifications.createIndex({ 'status': 1 });
+    db.notifications.createIndex({ 'type': 1 });
+    db.notifications.createIndex({ 'scheduledAt': 1 });
+    
+    // Index pour analytics
+    db.analytics_events.createIndex({ 'userId': 1, 'timestamp': -1 });
+    db.analytics_events.createIndex({ 'eventType': 1, 'timestamp': -1 });
+    db.analytics_events.createIndex({ 'timestamp': 1 }, { expireAfterSeconds: 7776000 }); // 90 jours
+    
+    print('Base de données ISMAIL MongoDB initialisée avec succès!');
+
+# Configuration des priorités
+priorityClassName: "high-priority"
+
+# Configuration du service account
+serviceAccount:
+  create: true
+  name: mongodb-serviceaccount
+  annotations: {}
+
+# Configuration RBAC
+rbac:
+  create: true
+
+# Configuration des volumes supplémentaires
+extraVolumes:
+- name: mongodb-config
+  configMap:
+    name: mongodb-config
+- name: mongodb-scripts
+  configMap:
+    name: mongodb-init-scripts
+
+extraVolumeMounts:
+- name: mongodb-config
+  mountPath: /opt/bitnami/mongodb/conf/mongodb.conf
+  subPath: mongodb.conf
+- name: mongodb-scripts
+  mountPath: /docker-entrypoint-initdb.d

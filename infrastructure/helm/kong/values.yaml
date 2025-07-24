@@ -1,0 +1,361 @@
+# Configuration Kong API Gateway - Plateforme ISMAIL
+# Gateway unifié pour tous les services avec sécurité et rate limiting
+
+# Configuration de l'image Kong
+image:
+  repository: kong
+  tag: "3.4"
+  pullPolicy: IfNotPresent
+
+# Variables d'environnement Kong
+env:
+  # Base de données PostgreSQL
+  database: postgres
+  pg_host: ismail-postgres-primary.af-south-1.rds.amazonaws.com
+  pg_port: 5432
+  pg_database: kong
+  pg_user: kong
+  pg_password:
+    valueFrom:
+      secretKeyRef:
+        name: kong-postgres-secret
+        key: password
+  
+  # Configuration générale
+  proxy_access_log: /dev/stdout
+  admin_access_log: /dev/stdout
+  admin_gui_access_log: /dev/stdout
+  portal_api_access_log: /dev/stdout
+  proxy_error_log: /dev/stderr
+  admin_error_log: /dev/stderr
+  admin_gui_error_log: /dev/stderr
+  portal_api_error_log: /dev/stderr
+  
+  # Plugins activés
+  plugins: "bundled,prometheus,rate-limiting,jwt,oauth2,cors,request-transformer,response-transformer"
+  
+  # Configuration SSL
+  ssl_cert: /etc/secrets/kong-ssl/tls.crt
+  ssl_cert_key: /etc/secrets/kong-ssl/tls.key
+  
+  # Configuration Admin API
+  admin_listen: "0.0.0.0:8001, 0.0.0.0:8444 ssl"
+  admin_gui_listen: "0.0.0.0:8002, 0.0.0.0:8445 ssl"
+  
+  # Configuration Proxy
+  proxy_listen: "0.0.0.0:8000, 0.0.0.0:8443 ssl"
+  
+  # Métriques Prometheus
+  prometheus_metrics: "on"
+
+# Configuration des secrets
+secretVolumes:
+- kong-ssl
+- kong-postgres-secret
+
+# Configuration du service
+proxy:
+  enabled: true
+  type: LoadBalancer
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
+  
+  http:
+    enabled: true
+    servicePort: 80
+    containerPort: 8000
+  
+  tls:
+    enabled: true
+    servicePort: 443
+    containerPort: 8443
+
+# Configuration Admin API
+admin:
+  enabled: true
+  type: ClusterIP
+  
+  http:
+    enabled: true
+    servicePort: 8001
+    containerPort: 8001
+  
+  tls:
+    enabled: true
+    servicePort: 8444
+    containerPort: 8444
+
+# Configuration Manager (GUI)
+manager:
+  enabled: true
+  type: ClusterIP
+  
+  http:
+    enabled: true
+    servicePort: 8002
+    containerPort: 8002
+  
+  tls:
+    enabled: true
+    servicePort: 8445
+    containerPort: 8445
+
+# Configuration des ressources
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2
+    memory: 2Gi
+
+# Configuration de l'autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Configuration des sondes de santé
+readinessProbe:
+  httpGet:
+    path: /status
+    port: 8000
+    scheme: HTTP
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+livenessProbe:
+  httpGet:
+    path: /status
+    port: 8000
+    scheme: HTTP
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 10
+  successThreshold: 1
+  failureThreshold: 5
+
+# Configuration des volumes pour SSL
+extraVolumes:
+- name: kong-ssl
+  secret:
+    secretName: kong-ssl-cert
+- name: kong-postgres-secret
+  secret:
+    secretName: kong-postgres-secret
+
+extraVolumeMounts:
+- name: kong-ssl
+  mountPath: /etc/secrets/kong-ssl
+  readOnly: true
+
+# Configuration des migrations
+migrations:
+  preUpgrade: true
+  postUpgrade: true
+
+# Configuration du déploiement
+replicaCount: 3
+
+# Stratégie de déploiement
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# Configuration des annotations pour Prometheus
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8100"
+  prometheus.io/path: "/metrics"
+
+# Configuration des labels
+podLabels:
+  app: kong-gateway
+  tier: gateway
+  project: ismail
+
+# Configuration de sécurité
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Configuration des tolérances et affinités
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - kong-gateway
+        topologyKey: kubernetes.io/hostname
+
+# Configuration des priorités
+priorityClassName: "high-priority"
+
+# Configuration du service account
+serviceAccount:
+  create: true
+  name: kong-serviceaccount
+  annotations: {}
+
+# Configuration RBAC
+rbac:
+  create: true
+
+# Configuration des ingress pour l'admin
+ingressController:
+  enabled: false  # Nous utilisons Kong comme ingress controller
+
+# Configuration Enterprise (si licence disponible)
+enterprise:
+  enabled: false
+  license_secret: kong-enterprise-license
+  vitals:
+    enabled: false
+  portal:
+    enabled: false
+  rbac:
+    enabled: false
+
+# Configuration des plugins par défaut
+plugins:
+  configMaps:
+  - name: kong-plugin-config
+    pluginName: rate-limiting
+    config:
+      minute: 1000
+      hour: 10000
+      policy: redis
+      redis_host: ismail-redis.af-south-1.cache.amazonaws.com
+      redis_port: 6379
+      redis_password:
+        valueFrom:
+          secretKeyRef:
+            name: redis-auth
+            key: password
+
+# Configuration des services upstream par défaut
+services:
+  auth-service:
+    url: http://auth-service.ismail-core.svc.cluster.local:8080
+    plugins:
+    - name: rate-limiting
+      config:
+        minute: 100
+        hour: 1000
+    - name: prometheus
+      config:
+        per_consumer: true
+    routes:
+    - name: auth-routes
+      paths:
+      - /api/auth
+      methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+
+  wallet-service:
+    url: http://wallet-service.ismail-core.svc.cluster.local:8080
+    plugins:
+    - name: jwt
+      config:
+        secret_is_base64: false
+    - name: rate-limiting
+      config:
+        minute: 200
+        hour: 2000
+    routes:
+    - name: wallet-routes
+      paths:
+      - /api/wallet
+      methods:
+      - GET
+      - POST
+      - PUT
+
+  notification-service:
+    url: http://notification-service.ismail-core.svc.cluster.local:8080
+    plugins:
+    - name: rate-limiting
+      config:
+        minute: 500
+        hour: 5000
+    routes:
+    - name: notification-routes
+      paths:
+      - /api/notifications
+      methods:
+      - GET
+      - POST
+
+  services-module:
+    url: http://services-module.ismail-business.svc.cluster.local:8080
+    plugins:
+    - name: cors
+      config:
+        origins:
+        - "https://app.ismail-platform.com"
+        - "https://mobile.ismail-platform.com"
+        methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        headers:
+        - Accept
+        - Authorization
+        - Content-Type
+        - X-Requested-With
+    routes:
+    - name: services-routes
+      paths:
+      - /api/services
+      methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+
+  shop-module:
+    url: http://shop-module.ismail-business.svc.cluster.local:8080
+    routes:
+    - name: shop-routes
+      paths:
+      - /api/shop
+      methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+
+# Configuration des certificats SSL
+certificates:
+- cert: |
+    -----BEGIN CERTIFICATE-----
+    # Certificat SSL pour *.ismail-platform.com
+    -----END CERTIFICATE-----
+  key: |
+    -----BEGIN PRIVATE KEY-----
+    # Clé privée SSL
+    -----END PRIVATE KEY-----
+  snis:
+  - "*.ismail-platform.com"
+  - "ismail-platform.com"

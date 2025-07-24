@@ -1,0 +1,276 @@
+# Configuration du service portefeuille ISMAIL
+spring:
+  application:
+    name: wallet-service
+  
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  
+  # Configuration base de données PostgreSQL
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ismail_main}
+    username: ${DB_USERNAME:ismail_app}
+    password: ${DB_PASSWORD:IsmaIl2024!App#Secure}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: WalletServicePool
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+  
+  # Configuration JPA
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 25
+        order_inserts: true
+        order_updates: true
+    open-in-view: false
+  
+  # Configuration Flyway
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    schemas: core
+    locations: classpath:db/migration
+  
+  # Configuration Redis
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 1 # Base dédiée au cache wallet
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 5
+  
+  # Configuration cache
+  cache:
+    type: redis
+    redis:
+      time-to-live: 1800000 # 30 minutes
+      cache-null-values: false
+
+# Configuration serveur
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /
+
+# Configuration management
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when_authorized
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# Configuration logging
+logging:
+  level:
+    com.ismail.platform.wallet: ${LOG_LEVEL:INFO}
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
+
+# Configuration OpenAPI/Swagger
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+  info:
+    title: ISMAIL Wallet Service API
+    description: API du service de gestion des portefeuilles et transactions
+    version: 1.0.0
+
+# Configuration spécifique ISMAIL Wallet
+ismail:
+  wallet:
+    # Configuration des crédits
+    credits:
+      conversion-rate: 50.0 # 1 crédit = 50 FCFA
+      minimum-purchase: 100 # Achat minimum en crédits
+      maximum-purchase: 100000 # Achat maximum en crédits
+      expiry-months: 12 # Expiration des crédits en mois
+      
+    # Configuration des limites
+    limits:
+      daily-transaction-limit: 1000000.00 # 1M FCFA par jour
+      monthly-transaction-limit: 10000000.00 # 10M FCFA par mois
+      max-wallet-balance: 50000000.00 # 50M FCFA maximum
+      min-transfer-amount: 100.00 # 100 FCFA minimum
+      max-transfer-amount: 5000000.00 # 5M FCFA maximum
+      
+    # Configuration des frais
+    fees:
+      transfer-fee-rate: 0.01 # 1% de frais sur les transferts
+      minimum-transfer-fee: 25.00 # 25 FCFA minimum
+      maximum-transfer-fee: 5000.00 # 5000 FCFA maximum
+      withdrawal-fee-rate: 0.02 # 2% de frais sur les retraits
+      
+    # Configuration des commissions
+    commissions:
+      junior-rate: 0.04 # 4% pour commercial junior
+      senior-rate: 0.06 # 6% pour commercial senior
+      team-rate: 0.02 # 2% pour équipe
+      bonus-rate: 0.01 # 1% bonus
+      minimum-commission: 50.00 # Commission minimum
+      
+    # Configuration des moyens de paiement
+    payment-methods:
+      orange-money:
+        enabled: true
+        api-url: ${ORANGE_MONEY_API_URL:https://api.orange.com}
+        merchant-id: ${ORANGE_MONEY_MERCHANT_ID:}
+        api-key: ${ORANGE_MONEY_API_KEY:}
+        webhook-secret: ${ORANGE_MONEY_WEBHOOK_SECRET:}
+        
+      mtn-money:
+        enabled: true
+        api-url: ${MTN_MONEY_API_URL:https://api.mtn.com}
+        api-key: ${MTN_MONEY_API_KEY:}
+        api-secret: ${MTN_MONEY_API_SECRET:}
+        
+      wave:
+        enabled: true
+        api-url: ${WAVE_API_URL:https://api.wave.com}
+        api-key: ${WAVE_API_KEY:}
+        
+      bank-card:
+        enabled: true
+        processor: stripe
+        api-key: ${STRIPE_API_KEY:}
+        webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+        
+    # Configuration des notifications
+    notifications:
+      enabled: true
+      transaction-notifications: true
+      balance-alerts: true
+      low-balance-threshold: 1000.00 # Alerte si solde < 1000 FCFA
+      
+    # Configuration de sécurité
+    security:
+      pin-required: true
+      pin-length: 4
+      max-pin-attempts: 3
+      pin-lockout-duration: 900 # 15 minutes
+      transaction-verification: true
+      
+    # Configuration des rapports
+    reporting:
+      enabled: true
+      daily-reports: true
+      monthly-reports: true
+      commission-reports: true
+      
+    # Configuration de l'audit
+    audit:
+      enabled: true
+      log-all-transactions: true
+      retention-days: 1825 # 5 ans
+
+---
+# Configuration développement
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+  
+  h2:
+    console:
+      enabled: true
+  
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+
+logging:
+  level:
+    com.ismail.platform.wallet: DEBUG
+
+ismail:
+  wallet:
+    notifications:
+      enabled: false
+    payment-methods:
+      orange-money:
+        enabled: false
+      mtn-money:
+        enabled: false
+
+---
+# Configuration test
+spring:
+  config:
+    activate:
+      on-profile: test
+
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+ismail:
+  wallet:
+    notifications:
+      enabled: false
+    payment-methods:
+      orange-money:
+        enabled: false
+      mtn-money:
+        enabled: false
+
+---
+# Configuration production
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    com.ismail.platform.wallet: INFO
+
+ismail:
+  wallet:
+    limits:
+      daily-transaction-limit: 500000.00 # Plus restrictif en prod
+      max-transfer-amount: 2000000.00

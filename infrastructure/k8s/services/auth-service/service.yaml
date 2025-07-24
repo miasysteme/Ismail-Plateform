@@ -1,0 +1,154 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: ${NAMESPACE}
+  labels:
+    app: auth-service
+    service: auth-service
+    environment: ${ENVIRONMENT}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8081"
+    prometheus.io/path: "/actuator/prometheus"
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+    protocol: TCP
+  - name: management
+    port: 8081
+    targetPort: management
+    protocol: TCP
+  selector:
+    app: auth-service
+  sessionAffinity: None
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service-headless
+  namespace: ${NAMESPACE}
+  labels:
+    app: auth-service
+    service: auth-service
+    environment: ${ENVIRONMENT}
+  annotations:
+    description: "Headless service for auth-service discovery"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+    protocol: TCP
+  selector:
+    app: auth-service
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: auth-service-metrics
+  namespace: ${NAMESPACE}
+  labels:
+    app: auth-service
+    service: auth-service
+    environment: ${ENVIRONMENT}
+spec:
+  selector:
+    matchLabels:
+      app: auth-service
+  endpoints:
+  - port: management
+    path: /actuator/prometheus
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+  namespaceSelector:
+    matchNames:
+    - ${NAMESPACE}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: auth-service-netpol
+  namespace: ${NAMESPACE}
+  labels:
+    app: auth-service
+    service: auth-service
+spec:
+  podSelector:
+    matchLabels:
+      app: auth-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Autoriser le trafic depuis Kong
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ismail-ingress
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: kong
+    ports:
+    - protocol: TCP
+      port: 8080
+  # Autoriser le monitoring depuis Prometheus
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ismail-monitoring
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: prometheus
+    ports:
+    - protocol: TCP
+      port: 8081
+  # Autoriser les health checks internes
+  - from:
+    - podSelector:
+        matchLabels:
+          app: auth-service
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 8081
+  egress:
+  # Autoriser l'accès à la base de données
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Autoriser l'accès à Redis
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Autoriser l'accès DNS
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Autoriser l'accès HTTPS pour APIs externes
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+  # Autoriser l'accès SMTP
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 587
+    - protocol: TCP
+      port: 465

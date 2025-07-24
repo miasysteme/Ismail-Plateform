@@ -1,0 +1,340 @@
+# CD Pipeline ISMAIL Platform - Développement
+# Déploiement automatique sur l'environnement de développement
+
+name: 🚀 Deploy to Development
+
+on:
+  push:
+    branches: [ develop ]
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: 'Force deployment even if tests fail'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  ENVIRONMENT: dev
+  NAMESPACE: ismail-dev
+  REGISTRY: ghcr.io
+  CLUSTER_NAME: ismail-dev-cluster
+  REGION: eu-west-1
+
+jobs:
+  # =====================================================
+  # VALIDATION PRÉ-DÉPLOIEMENT
+  # =====================================================
+  
+  pre-deployment-checks:
+    name: 🔍 Pre-deployment Checks
+    runs-on: ubuntu-latest
+    
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+      image_tags: ${{ steps.tags.outputs.tags }}
+    
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Check CI status
+        id: check
+        run: |
+          # Vérifier le statut du dernier CI
+          LATEST_CI_STATUS=$(gh api repos/${{ github.repository }}/actions/runs \
+            --jq '.workflow_runs[] | select(.head_branch == "develop" and .name == "🚀 ISMAIL CI Pipeline") | .conclusion' \
+            | head -1)
+          
+          if [[ "$LATEST_CI_STATUS" == "success" ]] || [[ "${{ github.event.inputs.force_deploy }}" == "true" ]]; then
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+            echo "✅ CI passed or force deploy requested"
+          else
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+            echo "❌ CI failed and force deploy not requested"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 📝 Generate image tags
+        id: tags
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          TAGS="develop-${SHORT_SHA},develop-latest"
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+          echo "Generated tags: ${TAGS}"
+
+  # =====================================================
+  # DÉPLOIEMENT INFRASTRUCTURE
+  # =====================================================
+  
+  deploy-infrastructure:
+    name: 🏗️ Deploy Infrastructure
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-checks]
+    if: needs.pre-deployment-checks.outputs.should_deploy == 'true'
+    
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: ⚙️ Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.REGION }}
+      
+      - name: 🔧 Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+      
+      - name: 🔧 Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.13.0'
+      
+      - name: 🔗 Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ${{ env.REGION }} --name ${{ env.CLUSTER_NAME }}
+      
+      - name: 🏗️ Deploy Kong API Gateway
+        run: |
+          chmod +x infrastructure/scripts/setup-kong.sh
+          ./infrastructure/scripts/setup-kong.sh ${{ env.ENVIRONMENT }}
+      
+      - name: 📊 Deploy Monitoring Stack
+        run: |
+          chmod +x infrastructure/scripts/setup-monitoring.sh
+          ./infrastructure/scripts/setup-monitoring.sh ${{ env.ENVIRONMENT }}
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # =====================================================
+  # DÉPLOIEMENT SERVICES
+  # =====================================================
+  
+  deploy-services:
+    name: 🚀 Deploy Services
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-checks, deploy-infrastructure]
+    if: needs.pre-deployment-checks.outputs.should_deploy == 'true'
+    
+    strategy:
+      matrix:
+        service: [auth-service, wallet-service]
+    
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: ⚙️ Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.REGION }}
+      
+      - name: 🔧 Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+      
+      - name: 🔧 Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.13.0'
+      
+      - name: 🔗 Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ${{ env.REGION }} --name ${{ env.CLUSTER_NAME }}
+      
+      - name: 🏗️ Create namespace
+        run: |
+          kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl label namespace ${{ env.NAMESPACE }} environment=${{ env.ENVIRONMENT }} --overwrite
+      
+      - name: 🔐 Create secrets
+        run: |
+          # Secrets pour base de données
+          kubectl create secret generic db-credentials \
+            --from-literal=host=${{ secrets.DEV_DB_HOST }} \
+            --from-literal=username=${{ secrets.DEV_DB_USERNAME }} \
+            --from-literal=password=${{ secrets.DEV_DB_PASSWORD }} \
+            --namespace=${{ env.NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+          
+          # Secrets pour Redis
+          kubectl create secret generic redis-credentials \
+            --from-literal=host=${{ secrets.DEV_REDIS_HOST }} \
+            --from-literal=password=${{ secrets.DEV_REDIS_PASSWORD }} \
+            --namespace=${{ env.NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+          
+          # Secrets pour JWT
+          kubectl create secret generic jwt-secrets \
+            --from-literal=secret=${{ secrets.DEV_JWT_SECRET }} \
+            --namespace=${{ env.NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+      
+      - name: 🚀 Deploy service
+        run: |
+          # Générer les manifests Kubernetes
+          envsubst < infrastructure/k8s/services/${{ matrix.service }}/deployment.yaml > /tmp/${{ matrix.service }}-deployment.yaml
+          envsubst < infrastructure/k8s/services/${{ matrix.service }}/service.yaml > /tmp/${{ matrix.service }}-service.yaml
+          
+          # Appliquer les manifests
+          kubectl apply -f /tmp/${{ matrix.service }}-deployment.yaml -n ${{ env.NAMESPACE }}
+          kubectl apply -f /tmp/${{ matrix.service }}-service.yaml -n ${{ env.NAMESPACE }}
+          
+          # Attendre que le déploiement soit prêt
+          kubectl rollout status deployment/${{ matrix.service }} -n ${{ env.NAMESPACE }} --timeout=300s
+        env:
+          IMAGE_TAG: develop-${{ github.sha }}
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+          NAMESPACE: ${{ env.NAMESPACE }}
+
+  # =====================================================
+  # TESTS POST-DÉPLOIEMENT
+  # =====================================================
+  
+  post-deployment-tests:
+    name: 🧪 Post-deployment Tests
+    runs-on: ubuntu-latest
+    needs: [deploy-services]
+    
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: ⚙️ Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.REGION }}
+      
+      - name: 🔧 Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+      
+      - name: 🔗 Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ${{ env.REGION }} --name ${{ env.CLUSTER_NAME }}
+      
+      - name: 🏥 Health checks
+        run: |
+          # Vérifier que tous les pods sont prêts
+          kubectl wait --for=condition=Ready pods -l app=auth-service -n ${{ env.NAMESPACE }} --timeout=300s
+          kubectl wait --for=condition=Ready pods -l app=wallet-service -n ${{ env.NAMESPACE }} --timeout=300s
+          
+          # Vérifier les endpoints de santé
+          AUTH_SERVICE_IP=$(kubectl get service auth-service -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.clusterIP}')
+          WALLET_SERVICE_IP=$(kubectl get service wallet-service -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.clusterIP}')
+          
+          kubectl run health-check --image=curlimages/curl --rm -i --restart=Never -- \
+            curl -f http://$AUTH_SERVICE_IP:8080/actuator/health
+          
+          kubectl run health-check --image=curlimages/curl --rm -i --restart=Never -- \
+            curl -f http://$WALLET_SERVICE_IP:8080/actuator/health
+      
+      - name: 🧪 Smoke tests
+        run: |
+          # Tests de fumée basiques
+          cd tests/smoke
+          chmod +x run-smoke-tests.sh
+          ./run-smoke-tests.sh ${{ env.ENVIRONMENT }}
+        env:
+          BASE_URL: ${{ secrets.DEV_BASE_URL }}
+
+  # =====================================================
+  # MISE À JOUR CONFIGURATION
+  # =====================================================
+  
+  update-configuration:
+    name: ⚙️ Update Configuration
+    runs-on: ubuntu-latest
+    needs: [post-deployment-tests]
+    
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: ⚙️ Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.REGION }}
+      
+      - name: 🔧 Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+      
+      - name: 🔗 Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ${{ env.REGION }} --name ${{ env.CLUSTER_NAME }}
+      
+      - name: 🔄 Update Kong routes
+        run: |
+          # Mettre à jour les routes Kong pour pointer vers les nouveaux services
+          chmod +x infrastructure/scripts/update-kong-routes.sh
+          ./infrastructure/scripts/update-kong-routes.sh ${{ env.ENVIRONMENT }} ${{ env.NAMESPACE }}
+      
+      - name: 📊 Update monitoring
+        run: |
+          # Mettre à jour les ServiceMonitors pour Prometheus
+          kubectl apply -f infrastructure/monitoring/servicemonitors/ -n ${{ env.NAMESPACE }}
+
+  # =====================================================
+  # NOTIFICATION ET DOCUMENTATION
+  # =====================================================
+  
+  notify-deployment:
+    name: 📢 Notify Deployment
+    runs-on: ubuntu-latest
+    needs: [update-configuration]
+    if: always()
+    
+    steps:
+      - name: 📊 Get deployment info
+        id: deployment-info
+        run: |
+          echo "deployment_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+          echo "commit_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "commit_message=$(git log -1 --pretty=%B)" >> $GITHUB_OUTPUT
+      
+      - name: 📢 Slack notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          username: 'ISMAIL Deploy Bot'
+          icon_emoji: ':rocket:'
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+          text: |
+            🚀 ISMAIL Development Deployment
+            
+            📊 Status: ${{ needs.update-configuration.result == 'success' && '✅ SUCCESS' || '❌ FAILED' }}
+            🌍 Environment: Development
+            📅 Time: ${{ steps.deployment-info.outputs.deployment_time }}
+            🔗 Commit: ${{ steps.deployment-info.outputs.commit_sha }}
+            
+            🔗 Access: ${{ secrets.DEV_BASE_URL }}
+            📊 Monitoring: ${{ secrets.DEV_GRAFANA_URL }}
+            
+            📝 Changes: ${{ steps.deployment-info.outputs.commit_message }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()
+      
+      - name: 📝 Update deployment status
+        run: |
+          # Mettre à jour le statut de déploiement dans un système externe si nécessaire
+          echo "Deployment completed for commit ${{ github.sha }}"
+          echo "Environment: ${{ env.ENVIRONMENT }}"
+          echo "Status: ${{ needs.update-configuration.result }}"

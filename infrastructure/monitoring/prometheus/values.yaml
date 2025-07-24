@@ -1,0 +1,430 @@
+# Configuration Prometheus pour la plateforme ISMAIL
+# Monitoring complet des services, infrastructure et business metrics
+
+# Configuration globale
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# Configuration Prometheus Server
+prometheus:
+  enabled: true
+  
+  # Configuration de l'image
+  image:
+    registry: quay.io
+    repository: prometheus/prometheus
+    tag: v2.48.0
+    pullPolicy: IfNotPresent
+  
+  # Configuration des ressources
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+  
+  # Configuration du stockage
+  persistence:
+    enabled: true
+    storageClass: "gp3"
+    size: 100Gi
+    accessModes:
+      - ReadWriteOnce
+  
+  # Configuration de rétention
+  retention: "30d"
+  retentionSize: "90GB"
+  
+  # Configuration du service
+  service:
+    type: ClusterIP
+    port: 9090
+    annotations:
+      prometheus.io/scrape: "false"
+  
+  # Configuration de sécurité
+  securityContext:
+    runAsUser: 65534
+    runAsGroup: 65534
+    fsGroup: 65534
+  
+  # Configuration des règles d'alerte
+  ruleFiles:
+    - /etc/prometheus/rules/*.yml
+  
+  # Configuration Prometheus
+  config:
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'ismail-platform'
+        environment: 'production'
+    
+    # Règles d'alerte
+    rule_files:
+      - "/etc/prometheus/rules/*.yml"
+    
+    # Configuration AlertManager
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+              - alertmanager:9093
+    
+    # Jobs de scraping
+    scrape_configs:
+      # Prometheus lui-même
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+      
+      # Kubernetes API Server
+      - job_name: 'kubernetes-apiservers'
+        kubernetes_sd_configs:
+          - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+      
+      # Kubernetes Nodes
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+          - role: node
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics
+      
+      # Kubernetes Pods
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+      
+      # Kong API Gateway
+      - job_name: 'kong'
+        kubernetes_sd_configs:
+          - role: service
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: kong-kong-admin
+          - source_labels: [__meta_kubernetes_service_port_name]
+            action: keep
+            regex: kong-admin
+        metrics_path: /metrics
+      
+      # Services ISMAIL
+      - job_name: 'ismail-services'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - ismail-core
+                - ismail-business
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_service_name
+      
+      # PostgreSQL Exporter
+      - job_name: 'postgresql'
+        static_configs:
+          - targets: ['postgres-exporter:9187']
+        scrape_interval: 30s
+      
+      # Redis Exporter
+      - job_name: 'redis'
+        static_configs:
+          - targets: ['redis-exporter:9121']
+        scrape_interval: 30s
+      
+      # MongoDB Exporter
+      - job_name: 'mongodb'
+        static_configs:
+          - targets: ['mongodb-exporter:9216']
+        scrape_interval: 30s
+      
+      # Node Exporter
+      - job_name: 'node-exporter'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_endpoints_name]
+            action: keep
+            regex: node-exporter
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: metrics
+
+# Configuration AlertManager
+alertmanager:
+  enabled: true
+  
+  # Configuration de l'image
+  image:
+    registry: quay.io
+    repository: prometheus/alertmanager
+    tag: v0.26.0
+    pullPolicy: IfNotPresent
+  
+  # Configuration des ressources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  # Configuration du stockage
+  persistence:
+    enabled: true
+    storageClass: "gp3"
+    size: 10Gi
+  
+  # Configuration du service
+  service:
+    type: ClusterIP
+    port: 9093
+  
+  # Configuration AlertManager
+  config:
+    global:
+      smtp_smarthost: 'smtp.sendgrid.net:587'
+      smtp_from: 'alerts@ismail-platform.com'
+      smtp_auth_username: 'apikey'
+      smtp_auth_password: '${SENDGRID_API_KEY}'
+    
+    # Templates d'alerte
+    templates:
+      - '/etc/alertmanager/templates/*.tmpl'
+    
+    # Routes d'alerte
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'default'
+      routes:
+        # Alertes critiques
+        - match:
+            severity: critical
+          receiver: 'critical-alerts'
+          group_wait: 5s
+          repeat_interval: 5m
+        
+        # Alertes Kong
+        - match:
+            service: kong
+          receiver: 'kong-alerts'
+        
+        # Alertes services core
+        - match_re:
+            service: '(auth-service|wallet-service)'
+          receiver: 'core-services-alerts'
+        
+        # Alertes base de données
+        - match_re:
+            service: '(postgresql|mongodb|redis)'
+          receiver: 'database-alerts'
+    
+    # Récepteurs d'alerte
+    receivers:
+      - name: 'default'
+        email_configs:
+          - to: 'ops@ismail-platform.com'
+            subject: '[ISMAIL] {{ .GroupLabels.alertname }}'
+            body: |
+              {{ range .Alerts }}
+              Alert: {{ .Annotations.summary }}
+              Description: {{ .Annotations.description }}
+              Labels: {{ range .Labels.SortedPairs }}{{ .Name }}={{ .Value }} {{ end }}
+              {{ end }}
+      
+      - name: 'critical-alerts'
+        email_configs:
+          - to: 'critical@ismail-platform.com'
+            subject: '[CRITICAL] {{ .GroupLabels.alertname }}'
+            body: |
+              🚨 ALERTE CRITIQUE 🚨
+              
+              {{ range .Alerts }}
+              Alert: {{ .Annotations.summary }}
+              Description: {{ .Annotations.description }}
+              Severity: {{ .Labels.severity }}
+              Service: {{ .Labels.service }}
+              Time: {{ .StartsAt }}
+              {{ end }}
+        slack_configs:
+          - api_url: '${SLACK_WEBHOOK_URL}'
+            channel: '#alerts-critical'
+            title: '🚨 Alerte Critique ISMAIL'
+            text: |
+              {{ range .Alerts }}
+              *{{ .Annotations.summary }}*
+              {{ .Annotations.description }}
+              {{ end }}
+      
+      - name: 'kong-alerts'
+        email_configs:
+          - to: 'kong@ismail-platform.com'
+            subject: '[KONG] {{ .GroupLabels.alertname }}'
+      
+      - name: 'core-services-alerts'
+        email_configs:
+          - to: 'services@ismail-platform.com'
+            subject: '[SERVICES] {{ .GroupLabels.alertname }}'
+      
+      - name: 'database-alerts'
+        email_configs:
+          - to: 'dba@ismail-platform.com'
+            subject: '[DATABASE] {{ .GroupLabels.alertname }}'
+
+# Configuration Node Exporter
+nodeExporter:
+  enabled: true
+  
+  # Configuration de l'image
+  image:
+    registry: quay.io
+    repository: prometheus/node-exporter
+    tag: v1.7.0
+    pullPolicy: IfNotPresent
+  
+  # Configuration des ressources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  
+  # Configuration du service
+  service:
+    type: ClusterIP
+    port: 9100
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9100"
+
+# Configuration Kube State Metrics
+kubeStateMetrics:
+  enabled: true
+  
+  # Configuration de l'image
+  image:
+    registry: registry.k8s.io
+    repository: kube-state-metrics/kube-state-metrics
+    tag: v2.10.1
+    pullPolicy: IfNotPresent
+  
+  # Configuration des ressources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  # Configuration du service
+  service:
+    type: ClusterIP
+    port: 8080
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8080"
+
+# Configuration des labels et annotations
+commonLabels:
+  app.kubernetes.io/name: prometheus
+  app.kubernetes.io/instance: ismail-prometheus
+  app.kubernetes.io/component: monitoring
+  project: ismail
+
+commonAnnotations:
+  description: "Stack de monitoring Prometheus pour ISMAIL"
+
+# Configuration RBAC
+rbac:
+  create: true
+
+# Configuration Service Account
+serviceAccount:
+  create: true
+  name: prometheus-serviceaccount
+  annotations: {}
+
+# Configuration des tolérances et affinités
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: prometheus
+        topologyKey: kubernetes.io/hostname
+
+nodeSelector:
+  node-role: monitoring

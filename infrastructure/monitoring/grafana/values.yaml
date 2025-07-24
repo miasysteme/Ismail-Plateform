@@ -1,0 +1,411 @@
+# Configuration Grafana pour la plateforme ISMAIL
+# Dashboards et visualisations pour monitoring complet
+
+# Configuration globale
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# Configuration Grafana
+grafana:
+  enabled: true
+  
+  # Configuration de l'image
+  image:
+    registry: docker.io
+    repository: grafana/grafana
+    tag: 10.2.2
+    pullPolicy: IfNotPresent
+  
+  # Configuration des ressources
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1
+      memory: 2Gi
+  
+  # Configuration du stockage
+  persistence:
+    enabled: true
+    storageClass: "gp3"
+    size: 20Gi
+    accessModes:
+      - ReadWriteOnce
+  
+  # Configuration du service
+  service:
+    type: LoadBalancer
+    port: 3000
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+  
+  # Configuration d'administration
+  admin:
+    user: admin
+    password: IsmaIl2024!Grafana#Admin
+    email: admin@ismail-platform.com
+  
+  # Configuration Grafana
+  config:
+    # Configuration serveur
+    server:
+      protocol: http
+      http_port: 3000
+      domain: grafana.ismail-platform.com
+      root_url: "https://grafana.ismail-platform.com"
+      serve_from_sub_path: false
+      
+    # Configuration base de données
+    database:
+      type: postgres
+      host: "${DB_HOST}:5432"
+      name: grafana
+      user: grafana_user
+      password: "${GRAFANA_DB_PASSWORD}"
+      ssl_mode: require
+      
+    # Configuration sécurité
+    security:
+      admin_user: admin
+      admin_password: "${GRAFANA_ADMIN_PASSWORD}"
+      secret_key: "${GRAFANA_SECRET_KEY}"
+      disable_gravatar: true
+      cookie_secure: true
+      cookie_samesite: strict
+      
+    # Configuration authentification
+    auth:
+      disable_login_form: false
+      disable_signout_menu: false
+      
+    # Configuration OAuth (optionnel)
+    "auth.generic_oauth":
+      enabled: false
+      name: OAuth
+      allow_sign_up: true
+      client_id: "${OAUTH_CLIENT_ID}"
+      client_secret: "${OAUTH_CLIENT_SECRET}"
+      scopes: "openid profile email"
+      auth_url: "https://auth.ismail-platform.com/oauth/authorize"
+      token_url: "https://auth.ismail-platform.com/oauth/token"
+      api_url: "https://auth.ismail-platform.com/oauth/userinfo"
+      
+    # Configuration utilisateurs
+    users:
+      allow_sign_up: false
+      allow_org_create: false
+      auto_assign_org: true
+      auto_assign_org_id: 1
+      auto_assign_org_role: Viewer
+      
+    # Configuration SMTP
+    smtp:
+      enabled: true
+      host: "smtp.sendgrid.net:587"
+      user: apikey
+      password: "${SENDGRID_API_KEY}"
+      from_address: "grafana@ismail-platform.com"
+      from_name: "ISMAIL Grafana"
+      
+    # Configuration logging
+    log:
+      mode: console
+      level: info
+      
+    # Configuration métriques
+    metrics:
+      enabled: true
+      basic_auth_username: prometheus
+      basic_auth_password: "${PROMETHEUS_PASSWORD}"
+      
+    # Configuration alerting
+    alerting:
+      enabled: true
+      execute_alerts: true
+      
+    # Configuration unified alerting
+    unified_alerting:
+      enabled: true
+      
+    # Configuration panels
+    panels:
+      disable_sanitize_html: false
+      
+    # Configuration plugins
+    plugins:
+      enable_alpha: false
+      app_tls_skip_verify_insecure: false
+
+  # Configuration des datasources
+  datasources:
+    # Prometheus principal
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: true
+      editable: false
+      jsonData:
+        timeInterval: "15s"
+        queryTimeout: "60s"
+        httpMethod: "POST"
+        
+    # PostgreSQL pour données business
+    - name: PostgreSQL
+      type: postgres
+      access: proxy
+      url: "${DB_HOST}:5432"
+      database: ismail_main
+      user: grafana_readonly
+      password: "${POSTGRES_READONLY_PASSWORD}"
+      jsonData:
+        sslmode: "require"
+        postgresVersion: 1500
+        timescaledb: false
+        
+    # MongoDB pour analytics
+    - name: MongoDB
+      type: grafana-mongodb-datasource
+      access: proxy
+      url: "mongodb://grafana_readonly:${MONGODB_READONLY_PASSWORD}@mongodb.ismail-data.svc.cluster.local:27017/ismail_main"
+      jsonData:
+        authSource: "admin"
+        ssl: false
+
+  # Configuration des plugins
+  plugins:
+    - grafana-mongodb-datasource
+    - grafana-piechart-panel
+    - grafana-worldmap-panel
+    - grafana-clock-panel
+    - grafana-simple-json-datasource
+    - redis-datasource
+    - yesoreyeram-boomtable-panel
+    - vonage-status-panel
+    - grafana-polystat-panel
+
+  # Configuration des dashboards
+  dashboardProviders:
+    - name: 'default'
+      orgId: 1
+      folder: ''
+      type: file
+      disableDeletion: false
+      updateIntervalSeconds: 10
+      allowUiUpdates: true
+      options:
+        path: /var/lib/grafana/dashboards/default
+        
+    - name: 'ismail-core'
+      orgId: 1
+      folder: 'ISMAIL Core'
+      type: file
+      disableDeletion: false
+      updateIntervalSeconds: 10
+      allowUiUpdates: true
+      options:
+        path: /var/lib/grafana/dashboards/ismail-core
+        
+    - name: 'ismail-business'
+      orgId: 1
+      folder: 'ISMAIL Business'
+      type: file
+      disableDeletion: false
+      updateIntervalSeconds: 10
+      allowUiUpdates: true
+      options:
+        path: /var/lib/grafana/dashboards/ismail-business
+        
+    - name: 'infrastructure'
+      orgId: 1
+      folder: 'Infrastructure'
+      type: file
+      disableDeletion: false
+      updateIntervalSeconds: 10
+      allowUiUpdates: true
+      options:
+        path: /var/lib/grafana/dashboards/infrastructure
+
+  # Configuration des notifications
+  notifiers:
+    - name: email-ops
+      type: email
+      uid: email-ops
+      org_id: 1
+      is_default: true
+      send_reminder: true
+      frequency: "10m"
+      settings:
+        addresses: "ops@ismail-platform.com"
+        subject: "[GRAFANA] {{ .Title }}"
+        
+    - name: slack-critical
+      type: slack
+      uid: slack-critical
+      org_id: 1
+      is_default: false
+      send_reminder: true
+      frequency: "5m"
+      settings:
+        url: "${SLACK_WEBHOOK_URL}"
+        channel: "#alerts-critical"
+        username: "Grafana"
+        title: "🚨 Alerte Critique ISMAIL"
+        text: "{{ .Message }}"
+
+  # Configuration de sécurité
+  securityContext:
+    runAsUser: 472
+    runAsGroup: 472
+    fsGroup: 472
+
+  # Configuration des volumes
+  extraVolumes:
+    - name: dashboards-default
+      configMap:
+        name: grafana-dashboards-default
+    - name: dashboards-ismail-core
+      configMap:
+        name: grafana-dashboards-ismail-core
+    - name: dashboards-ismail-business
+      configMap:
+        name: grafana-dashboards-ismail-business
+    - name: dashboards-infrastructure
+      configMap:
+        name: grafana-dashboards-infrastructure
+
+  extraVolumeMounts:
+    - name: dashboards-default
+      mountPath: /var/lib/grafana/dashboards/default
+      readOnly: true
+    - name: dashboards-ismail-core
+      mountPath: /var/lib/grafana/dashboards/ismail-core
+      readOnly: true
+    - name: dashboards-ismail-business
+      mountPath: /var/lib/grafana/dashboards/ismail-business
+      readOnly: true
+    - name: dashboards-infrastructure
+      mountPath: /var/lib/grafana/dashboards/infrastructure
+      readOnly: true
+
+  # Configuration des variables d'environnement
+  env:
+    GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
+    GF_DATABASE_PASSWORD: "${GRAFANA_DB_PASSWORD}"
+    GF_SECURITY_SECRET_KEY: "${GRAFANA_SECRET_KEY}"
+    GF_SMTP_PASSWORD: "${SENDGRID_API_KEY}"
+    GF_INSTALL_PLUGINS: "grafana-mongodb-datasource,grafana-piechart-panel,grafana-worldmap-panel"
+
+  # Configuration des secrets
+  envFromSecret: grafana-secrets
+
+# Configuration des exporters additionnels
+exporters:
+  # PostgreSQL Exporter
+  postgresql:
+    enabled: true
+    image:
+      registry: quay.io
+      repository: prometheuscommunity/postgres-exporter
+      tag: v0.15.0
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+    config:
+      datasource: "postgresql://postgres_exporter:${POSTGRES_EXPORTER_PASSWORD}@${DB_HOST}:5432/ismail_main?sslmode=require"
+      
+  # Redis Exporter
+  redis:
+    enabled: true
+    image:
+      registry: docker.io
+      repository: oliver006/redis_exporter
+      tag: v1.55.0
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+    config:
+      redis_addr: "${REDIS_HOST}:6379"
+      redis_password: "${REDIS_PASSWORD}"
+      
+  # MongoDB Exporter
+  mongodb:
+    enabled: true
+    image:
+      registry: docker.io
+      repository: percona/mongodb_exporter
+      tag: 0.40.0
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+    config:
+      mongodb_uri: "mongodb://mongodb_exporter:${MONGODB_EXPORTER_PASSWORD}@mongodb.ismail-data.svc.cluster.local:27017/admin"
+
+# Configuration des labels et annotations
+commonLabels:
+  app.kubernetes.io/name: grafana
+  app.kubernetes.io/instance: ismail-grafana
+  app.kubernetes.io/component: monitoring
+  project: ismail
+
+commonAnnotations:
+  description: "Grafana pour monitoring et dashboards ISMAIL"
+
+# Configuration RBAC
+rbac:
+  create: true
+
+# Configuration Service Account
+serviceAccount:
+  create: true
+  name: grafana-serviceaccount
+  annotations: {}
+
+# Configuration des tolérances et affinités
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: grafana
+        topologyKey: kubernetes.io/hostname
+
+nodeSelector:
+  node-role: monitoring
+
+# Configuration Ingress
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: grafana.ismail-platform.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: grafana-tls
+      hosts:
+        - grafana.ismail-platform.com

@@ -1,0 +1,261 @@
+# Variables Terraform - Plateforme ISMAIL
+# Copiez ce fichier vers terraform.tfvars et adaptez les valeurs
+
+# Configuration générale
+aws_region = "af-south-1"  # Région AWS (Cape Town pour l'Afrique)
+environment = "dev"        # dev, staging, prod
+
+# Configuration du cluster EKS
+cluster_name = "ismail-cluster"
+cluster_version = "1.28"
+
+# Configuration VPC
+vpc_cidr = "10.0.0.0/16"
+availability_zones = ["af-south-1a", "af-south-1b", "af-south-1c"]
+
+# Configuration des nœuds EKS
+node_groups = {
+  system = {
+    instance_types = ["t3.medium"]
+    min_size      = 2
+    max_size      = 4
+    desired_size  = 2
+    disk_size     = 50
+  }
+  
+  application = {
+    instance_types = ["t3.large", "t3.xlarge"]
+    min_size      = 3
+    max_size      = 20
+    desired_size  = 5
+    disk_size     = 100
+  }
+  
+  database = {
+    instance_types = ["r5.large"]
+    min_size      = 2
+    max_size      = 6
+    desired_size  = 2
+    disk_size     = 200
+  }
+}
+
+# Configuration RDS PostgreSQL
+postgres_config = {
+  engine_version    = "15.4"
+  instance_class    = "db.t3.medium"  # db.r5.xlarge pour prod
+  allocated_storage = 100             # 500 pour prod
+  max_allocated_storage = 500         # 2000 pour prod
+  backup_retention_period = 7         # 30 pour prod
+  multi_az = false                    # true pour prod
+  deletion_protection = false         # true pour prod
+}
+
+# Configuration ElastiCache Redis
+redis_config = {
+  node_type = "cache.t3.micro"  # cache.r6g.large pour prod
+  num_cache_clusters = 1        # 3 pour prod
+  automatic_failover_enabled = false  # true pour prod
+  multi_az_enabled = false      # true pour prod
+  snapshot_retention_limit = 1  # 7 pour prod
+}
+
+# Configuration S3
+s3_config = {
+  versioning_enabled = true
+  encryption_enabled = true
+  lifecycle_rules = {
+    transition_ia_days = 30
+    transition_glacier_days = 90
+    expiration_days = 365
+  }
+}
+
+# Configuration des tags
+default_tags = {
+  Project     = "ISMAIL"
+  Owner       = "ISMAIL-DevOps"
+  Environment = "dev"
+  ManagedBy   = "Terraform"
+  CostCenter  = "Engineering"
+  Backup      = "Required"
+}
+
+# Configuration de sécurité
+security_config = {
+  enable_flow_logs = true
+  enable_guardduty = true
+  enable_config = true
+  enable_cloudtrail = true
+}
+
+# Configuration monitoring
+monitoring_config = {
+  enable_container_insights = true
+  log_retention_days = 30  # 90 pour prod
+  enable_performance_insights = true
+}
+
+# Configuration réseau
+network_config = {
+  enable_nat_gateway = true
+  enable_vpn_gateway = false
+  enable_dns_hostnames = true
+  enable_dns_support = true
+  
+  # CIDR blocks
+  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+  database_subnets = ["10.0.201.0/24", "10.0.202.0/24", "10.0.203.0/24"]
+}
+
+# Configuration des certificats SSL
+ssl_config = {
+  domain_name = "ismail-platform.com"
+  subject_alternative_names = [
+    "*.ismail-platform.com",
+    "api.ismail-platform.com",
+    "app.ismail-platform.com",
+    "admin.ismail-platform.com"
+  ]
+  validation_method = "DNS"
+}
+
+# Configuration des alertes
+alerting_config = {
+  sns_topic_name = "ismail-alerts"
+  email_endpoints = [
+    "devops@ismail-platform.com",
+    "admin@ismail-platform.com"
+  ]
+  slack_webhook_url = "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+}
+
+# Configuration backup
+backup_config = {
+  backup_vault_name = "ismail-backup-vault"
+  backup_plan_name = "ismail-backup-plan"
+  
+  # Règles de backup
+  rules = {
+    daily = {
+      schedule = "cron(0 2 ? * * *)"  # 2h du matin
+      lifecycle = {
+        cold_storage_after = 30
+        delete_after = 365
+      }
+    }
+    
+    weekly = {
+      schedule = "cron(0 3 ? * SUN *)"  # Dimanche 3h
+      lifecycle = {
+        cold_storage_after = 90
+        delete_after = 1095  # 3 ans
+      }
+    }
+  }
+}
+
+# Configuration des limites de ressources
+resource_limits = {
+  max_pods_per_node = 110
+  max_nodes_per_cluster = 100
+  
+  # Quotas par namespace
+  namespace_quotas = {
+    "ismail-core" = {
+      requests_cpu = "4"
+      requests_memory = "8Gi"
+      limits_cpu = "8"
+      limits_memory = "16Gi"
+      pods = "20"
+    }
+    
+    "ismail-business" = {
+      requests_cpu = "8"
+      requests_memory = "16Gi"
+      limits_cpu = "16"
+      limits_memory = "32Gi"
+      pods = "50"
+    }
+    
+    "ismail-data" = {
+      requests_cpu = "4"
+      requests_memory = "8Gi"
+      limits_cpu = "8"
+      limits_memory = "16Gi"
+      pods = "10"
+      requests_storage = "100Gi"
+    }
+  }
+}
+
+# Configuration des politiques IAM
+iam_config = {
+  # Rôles personnalisés
+  custom_roles = [
+    {
+      name = "ISMAILDeveloper"
+      description = "Accès développeur ISMAIL"
+      policies = [
+        "arn:aws:iam::aws:policy/ReadOnlyAccess",
+        "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+      ]
+    }
+  ]
+  
+  # Utilisateurs de service
+  service_users = [
+    {
+      name = "ismail-ci-cd"
+      description = "Utilisateur pour CI/CD"
+      policies = [
+        "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
+        "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+      ]
+    }
+  ]
+}
+
+# Configuration des coûts
+cost_config = {
+  # Budget mensuel
+  monthly_budget = {
+    amount = 1000  # USD
+    threshold_percentages = [50, 80, 100]
+    notification_emails = ["finance@ismail-platform.com"]
+  }
+  
+  # Optimisation des coûts
+  cost_optimization = {
+    enable_spot_instances = true
+    spot_instance_percentage = 50  # % de nœuds spot
+    enable_scheduled_scaling = true
+  }
+}
+
+# Configuration de conformité
+compliance_config = {
+  # RGPD/GDPR
+  gdpr = {
+    enable_encryption_at_rest = true
+    enable_encryption_in_transit = true
+    data_retention_days = 1825  # 5 ans
+    enable_audit_logging = true
+  }
+  
+  # Conformité UEMOA
+  uemoa = {
+    data_residency = "africa"
+    enable_local_backup = true
+    compliance_reporting = true
+  }
+}
+
+# Configuration de développement local
+development_config = {
+  enable_local_testing = true
+  local_registry = "localhost:5000"
+  skip_ssl_verification = true
+  debug_mode = true
+}

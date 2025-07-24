@@ -1,0 +1,175 @@
+# Action personnalisée pour déployer un service ISMAIL
+# Réutilisable pour tous les services et environnements
+
+name: 'Deploy ISMAIL Service'
+description: 'Deploy a service to Kubernetes with health checks and rollback'
+
+inputs:
+  service-name:
+    description: 'Name of the service to deploy'
+    required: true
+  environment:
+    description: 'Target environment (dev, staging, prod)'
+    required: true
+  namespace:
+    description: 'Kubernetes namespace'
+    required: true
+  image-tag:
+    description: 'Docker image tag to deploy'
+    required: true
+  cluster-name:
+    description: 'EKS cluster name'
+    required: true
+  region:
+    description: 'AWS region'
+    required: true
+    default: 'eu-west-1'
+  timeout:
+    description: 'Deployment timeout in seconds'
+    required: false
+    default: '300'
+  health-check-retries:
+    description: 'Number of health check retries'
+    required: false
+    default: '5'
+
+outputs:
+  deployment-status:
+    description: 'Status of the deployment (success/failed)'
+    value: ${{ steps.deploy.outputs.status }}
+  service-url:
+    description: 'URL of the deployed service'
+    value: ${{ steps.deploy.outputs.url }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🔧 Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+    
+    - name: 🔗 Update kubeconfig
+      shell: bash
+      run: |
+        aws eks update-kubeconfig --region ${{ inputs.region }} --name ${{ inputs.cluster-name }}
+    
+    - name: 🏗️ Create namespace if not exists
+      shell: bash
+      run: |
+        kubectl create namespace ${{ inputs.namespace }} --dry-run=client -o yaml | kubectl apply -f -
+        kubectl label namespace ${{ inputs.namespace }} environment=${{ inputs.environment }} --overwrite
+    
+    - name: 🔍 Check current deployment
+      id: current
+      shell: bash
+      run: |
+        if kubectl get deployment ${{ inputs.service-name }} -n ${{ inputs.namespace }} &> /dev/null; then
+          CURRENT_IMAGE=$(kubectl get deployment ${{ inputs.service-name }} -n ${{ inputs.namespace }} -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "current-image=${CURRENT_IMAGE}" >> $GITHUB_OUTPUT
+          echo "exists=true" >> $GITHUB_OUTPUT
+          echo "Current deployment exists with image: ${CURRENT_IMAGE}"
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+          echo "No current deployment found"
+        fi
+    
+    - name: 🚀 Deploy service
+      id: deploy
+      shell: bash
+      run: |
+        set -e
+        
+        # Variables
+        SERVICE_NAME="${{ inputs.service-name }}"
+        NAMESPACE="${{ inputs.namespace }}"
+        IMAGE_TAG="${{ inputs.image-tag }}"
+        ENVIRONMENT="${{ inputs.environment }}"
+        
+        echo "Deploying ${SERVICE_NAME} with tag ${IMAGE_TAG} to ${ENVIRONMENT}"
+        
+        # Générer les manifests
+        export SERVICE_NAME NAMESPACE IMAGE_TAG ENVIRONMENT
+        envsubst < infrastructure/k8s/services/${SERVICE_NAME}/deployment.yaml > /tmp/${SERVICE_NAME}-deployment.yaml
+        envsubst < infrastructure/k8s/services/${SERVICE_NAME}/service.yaml > /tmp/${SERVICE_NAME}-service.yaml
+        
+        # Appliquer les manifests
+        kubectl apply -f /tmp/${SERVICE_NAME}-deployment.yaml -n ${NAMESPACE}
+        kubectl apply -f /tmp/${SERVICE_NAME}-service.yaml -n ${NAMESPACE}
+        
+        # Attendre le rollout
+        if kubectl rollout status deployment/${SERVICE_NAME} -n ${NAMESPACE} --timeout=${{ inputs.timeout }}s; then
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "✅ Deployment successful"
+        else
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "❌ Deployment failed"
+          exit 1
+        fi
+        
+        # Obtenir l'URL du service
+        SERVICE_IP=$(kubectl get service ${SERVICE_NAME} -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+        SERVICE_PORT=$(kubectl get service ${SERVICE_NAME} -n ${NAMESPACE} -o jsonpath='{.spec.ports[0].port}')
+        echo "url=http://${SERVICE_IP}:${SERVICE_PORT}" >> $GITHUB_OUTPUT
+    
+    - name: 🏥 Health check
+      shell: bash
+      run: |
+        SERVICE_NAME="${{ inputs.service-name }}"
+        NAMESPACE="${{ inputs.namespace }}"
+        RETRIES=${{ inputs.health-check-retries }}
+        
+        echo "Performing health check for ${SERVICE_NAME}..."
+        
+        for i in $(seq 1 $RETRIES); do
+          echo "Health check attempt $i/$RETRIES"
+          
+          if kubectl exec -n ${NAMESPACE} deployment/${SERVICE_NAME} -- \
+             curl -f http://localhost:8080/actuator/health; then
+            echo "✅ Health check passed"
+            break
+          else
+            if [ $i -eq $RETRIES ]; then
+              echo "❌ Health check failed after $RETRIES attempts"
+              exit 1
+            fi
+            echo "⏳ Health check failed, retrying in 10 seconds..."
+            sleep 10
+          fi
+        done
+    
+    - name: 📊 Collect metrics
+      shell: bash
+      run: |
+        SERVICE_NAME="${{ inputs.service-name }}"
+        NAMESPACE="${{ inputs.namespace }}"
+        
+        echo "Collecting deployment metrics..."
+        
+        # Pods status
+        kubectl get pods -l app=${SERVICE_NAME} -n ${NAMESPACE}
+        
+        # Resource usage
+        kubectl top pods -l app=${SERVICE_NAME} -n ${NAMESPACE} || echo "Metrics server not available"
+        
+        # Events
+        kubectl get events -n ${NAMESPACE} --field-selector involvedObject.name=${SERVICE_NAME} --sort-by='.lastTimestamp' | tail -10
+    
+    - name: 🔄 Rollback on failure
+      if: failure() && steps.current.outputs.exists == 'true'
+      shell: bash
+      run: |
+        SERVICE_NAME="${{ inputs.service-name }}"
+        NAMESPACE="${{ inputs.namespace }}"
+        CURRENT_IMAGE="${{ steps.current.outputs.current-image }}"
+        
+        echo "❌ Deployment failed, rolling back to previous version..."
+        echo "Previous image: ${CURRENT_IMAGE}"
+        
+        # Rollback to previous version
+        kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=${CURRENT_IMAGE} -n ${NAMESPACE}
+        
+        # Wait for rollback
+        kubectl rollout status deployment/${SERVICE_NAME} -n ${NAMESPACE} --timeout=300s
+        
+        echo "✅ Rollback completed"

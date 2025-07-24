@@ -1,0 +1,350 @@
+# Configuration du service d'authentification ISMAIL
+spring:
+  application:
+    name: auth-service
+  
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  
+  # Configuration base de données PostgreSQL
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ismail_main}
+    username: ${DB_USERNAME:ismail_app}
+    password: ${DB_PASSWORD:IsmaIl2024!App#Secure}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: AuthServicePool
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+      validation-timeout: 5000
+      leak-detection-threshold: 60000
+  
+  # Configuration JPA
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        use_sql_comments: true
+        jdbc:
+          batch_size: 25
+        order_inserts: true
+        order_updates: true
+        generate_statistics: false
+    open-in-view: false
+  
+  # Configuration Flyway
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    validate-on-migrate: true
+    schemas: core
+    locations: classpath:db/migration
+  
+  # Configuration Redis
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 5
+          max-wait: 2000ms
+  
+  # Configuration cache
+  cache:
+    type: redis
+    redis:
+      time-to-live: 3600000 # 1 heure
+      cache-null-values: false
+  
+  # Configuration mail
+  mail:
+    host: ${MAIL_HOST:smtp.sendgrid.net}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:apikey}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          ssl:
+            trust: "*"
+  
+  # Configuration Jackson
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+      write-durations-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+    time-zone: UTC
+
+# Configuration serveur
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+    mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json
+  http2:
+    enabled: true
+
+# Configuration management
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when_authorized
+      show-components: always
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.5, 0.95, 0.99
+  health:
+    redis:
+      enabled: true
+    db:
+      enabled: true
+
+# Configuration logging
+logging:
+  level:
+    com.ismail.platform.auth: ${LOG_LEVEL:INFO}
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%logger{36}] - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%logger{36}] - %msg%n"
+
+# Configuration OpenAPI/Swagger
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+  info:
+    title: ISMAIL Auth Service API
+    description: API du service d'authentification et KYC biométrique
+    version: 1.0.0
+    contact:
+      name: ISMAIL Platform Team
+      email: dev@ismail-platform.com
+
+# Configuration spécifique ISMAIL
+ismail:
+  auth:
+    # Configuration JWT
+    jwt:
+      secret: ${JWT_SECRET:IsmaIl2024!JWT#Secret#Key#For#Authentication}
+      issuer: ismail-platform
+      audience: ismail-api
+      access-token-expiration: 3600 # 1 heure en secondes
+      refresh-token-expiration: 2592000 # 30 jours en secondes
+      algorithm: HS256
+    
+    # Configuration KYC biométrique
+    kyc:
+      enabled: true
+      biometric-threshold: 0.85 # Seuil de confiance pour la biométrie
+      max-verification-attempts: 3
+      verification-expiry-days: 365
+      required-documents:
+        - ID_CARD
+        - SELFIE
+      
+    # Configuration sécurité
+    security:
+      password:
+        min-length: 8
+        require-uppercase: true
+        require-lowercase: true
+        require-numbers: true
+        require-special-chars: true
+        max-attempts: 5
+        lockout-duration: 900 # 15 minutes en secondes
+      
+      session:
+        max-concurrent-sessions: 3
+        session-timeout: 1800 # 30 minutes en secondes
+        remember-me-duration: 1209600 # 14 jours en secondes
+      
+      rate-limiting:
+        login-attempts: 5
+        login-window: 300 # 5 minutes en secondes
+        registration-attempts: 3
+        registration-window: 3600 # 1 heure en secondes
+    
+    # Configuration cartes professionnelles
+    professional-cards:
+      enabled: true
+      qr-code-size: 200
+      card-validity-days: 365
+      auto-renewal-days: 30
+      template-version: "1.0"
+    
+    # Configuration notifications
+    notifications:
+      enabled: true
+      email:
+        from: noreply@ismail-platform.com
+        templates:
+          welcome: welcome-email
+          verification: email-verification
+          password-reset: password-reset
+          kyc-approved: kyc-approved
+          kyc-rejected: kyc-rejected
+      sms:
+        enabled: true
+        provider: ${SMS_PROVIDER:twilio}
+        from: ${SMS_FROM:+2250123456789}
+    
+    # Configuration intégrations externes
+    external:
+      # Service de géolocalisation
+      geolocation:
+        enabled: true
+        provider: google
+        api-key: ${GEOLOCATION_API_KEY:}
+      
+      # Service de vérification d'identité
+      identity-verification:
+        enabled: true
+        provider: jumio
+        api-key: ${IDENTITY_VERIFICATION_API_KEY:}
+        api-secret: ${IDENTITY_VERIFICATION_API_SECRET:}
+      
+      # Service biométrique
+      biometric:
+        enabled: true
+        provider: neurotechnology
+        license-key: ${BIOMETRIC_LICENSE_KEY:}
+        endpoint: ${BIOMETRIC_ENDPOINT:http://localhost:8090}
+
+---
+# Configuration développement
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  # Base de données H2 pour développement local
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+  
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+
+logging:
+  level:
+    com.ismail.platform.auth: DEBUG
+    org.springframework.security: DEBUG
+
+ismail:
+  auth:
+    kyc:
+      enabled: false # Désactiver KYC en développement
+    notifications:
+      email:
+        enabled: false # Désactiver emails en développement
+      sms:
+        enabled: false # Désactiver SMS en développement
+
+---
+# Configuration test
+spring:
+  config:
+    activate:
+      on-profile: test
+
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+logging:
+  level:
+    com.ismail.platform.auth: WARN
+    org.springframework: WARN
+
+ismail:
+  auth:
+    kyc:
+      enabled: false
+    notifications:
+      enabled: false
+
+---
+# Configuration production
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        generate_statistics: false
+
+logging:
+  level:
+    com.ismail.platform.auth: INFO
+    org.springframework: WARN
+    org.hibernate: WARN
+
+management:
+  endpoint:
+    health:
+      show-details: never
+
+ismail:
+  auth:
+    security:
+      rate-limiting:
+        login-attempts: 3 # Plus restrictif en production
+        registration-attempts: 2

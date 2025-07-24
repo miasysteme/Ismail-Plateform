@@ -1,0 +1,333 @@
+# Configuration Prometheus Stack - Plateforme ISMAIL
+# Monitoring complet avec Prometheus, Grafana, AlertManager
+
+# Configuration globale
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# Prometheus Server
+prometheus:
+  enabled: true
+  
+  prometheusSpec:
+    # Rétention des données
+    retention: 30d
+    retentionSize: 50GB
+    
+    # Ressources
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2
+        memory: 4Gi
+    
+    # Stockage persistant
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 100Gi
+    
+    # Configuration de scraping
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    
+    # Règles d'alerte personnalisées
+    additionalScrapeConfigs:
+      - job_name: 'ismail-services'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - ismail-core
+                - ismail-business
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+
+# Grafana
+grafana:
+  enabled: true
+  
+  # Admin credentials
+  adminPassword: "IsmaIl2024!Secure"
+  
+  # Ressources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  
+  # Stockage persistant
+  persistence:
+    enabled: true
+    storageClassName: gp3
+    size: 10Gi
+  
+  # Configuration
+  grafana.ini:
+    server:
+      root_url: "https://monitoring.ismail-platform.com"
+    security:
+      admin_user: admin
+      admin_password: "IsmaIl2024!Secure"
+    auth:
+      disable_login_form: false
+    auth.anonymous:
+      enabled: false
+    smtp:
+      enabled: true
+      host: "smtp.sendgrid.net:587"
+      user: "apikey"
+      password: "${SENDGRID_API_KEY}"
+      from_address: "monitoring@ismail-platform.com"
+      from_name: "ISMAIL Monitoring"
+  
+  # Dashboards pré-configurés
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'ismail-dashboards'
+        orgId: 1
+        folder: 'ISMAIL'
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/ismail
+  
+  # Dashboards personnalisés
+  dashboards:
+    ismail:
+      platform-overview:
+        gnetId: 15757  # Kubernetes cluster monitoring
+        revision: 1
+        datasource: Prometheus
+      
+      application-metrics:
+        gnetId: 12900  # Spring Boot metrics
+        revision: 1
+        datasource: Prometheus
+      
+      database-metrics:
+        gnetId: 9628   # PostgreSQL metrics
+        revision: 1
+        datasource: Prometheus
+
+# AlertManager
+alertmanager:
+  enabled: true
+  
+  alertmanagerSpec:
+    # Ressources
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    
+    # Stockage
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+    
+    # Configuration des alertes
+    config:
+      global:
+        smtp_smarthost: 'smtp.sendgrid.net:587'
+        smtp_from: 'alerts@ismail-platform.com'
+        smtp_auth_username: 'apikey'
+        smtp_auth_password: '${SENDGRID_API_KEY}'
+      
+      route:
+        group_by: ['alertname', 'cluster', 'service']
+        group_wait: 10s
+        group_interval: 10s
+        repeat_interval: 1h
+        receiver: 'web.hook'
+        routes:
+        - match:
+            severity: critical
+          receiver: 'critical-alerts'
+        - match:
+            severity: warning
+          receiver: 'warning-alerts'
+      
+      receivers:
+      - name: 'web.hook'
+        webhook_configs:
+        - url: 'http://ismail-notification-service:8080/alerts/webhook'
+          send_resolved: true
+      
+      - name: 'critical-alerts'
+        email_configs:
+        - to: 'devops@ismail-platform.com'
+          subject: '[CRITICAL] ISMAIL Platform Alert'
+          body: |
+            {{ range .Alerts }}
+            Alert: {{ .Annotations.summary }}
+            Description: {{ .Annotations.description }}
+            {{ end }}
+        slack_configs:
+        - api_url: '${SLACK_WEBHOOK_URL}'
+          channel: '#alerts-critical'
+          title: 'ISMAIL Critical Alert'
+          text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+      
+      - name: 'warning-alerts'
+        email_configs:
+        - to: 'monitoring@ismail-platform.com'
+          subject: '[WARNING] ISMAIL Platform Alert'
+          body: |
+            {{ range .Alerts }}
+            Alert: {{ .Annotations.summary }}
+            Description: {{ .Annotations.description }}
+            {{ end }}
+
+# Node Exporter
+nodeExporter:
+  enabled: true
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Kube State Metrics
+kubeStateMetrics:
+  enabled: true
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Prometheus Operator
+prometheusOperator:
+  enabled: true
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# Service Monitors personnalisés
+additionalServiceMonitors:
+  - name: ismail-auth-service
+    selector:
+      matchLabels:
+        app: auth-service
+    endpoints:
+    - port: metrics
+      path: /actuator/prometheus
+      interval: 30s
+  
+  - name: ismail-wallet-service
+    selector:
+      matchLabels:
+        app: wallet-service
+    endpoints:
+    - port: metrics
+      path: /actuator/prometheus
+      interval: 30s
+  
+  - name: ismail-notification-service
+    selector:
+      matchLabels:
+        app: notification-service
+    endpoints:
+    - port: metrics
+      path: /actuator/prometheus
+      interval: 30s
+
+# Règles d'alerte personnalisées
+additionalPrometheusRules:
+  - name: ismail-platform-rules
+    groups:
+    - name: ismail.platform
+      rules:
+      # Alerte sur le taux d'erreur élevé
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Taux d'erreur élevé détecté"
+          description: "Le service {{ $labels.service }} a un taux d'erreur de {{ $value }}%"
+      
+      # Alerte sur la latence élevée
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latence élevée détectée"
+          description: "Le service {{ $labels.service }} a une latence P95 de {{ $value }}s"
+      
+      # Alerte sur l'utilisation CPU
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total[5m]) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Utilisation CPU élevée"
+          description: "Le pod {{ $labels.pod }} utilise {{ $value }}% du CPU"
+      
+      # Alerte sur l'utilisation mémoire
+      - alert: HighMemoryUsage
+        expr: (container_memory_usage_bytes / container_spec_memory_limit_bytes) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Utilisation mémoire élevée"
+          description: "Le pod {{ $labels.pod }} utilise {{ $value }}% de la mémoire"
+      
+      # Alerte sur les pods qui redémarrent
+      - alert: PodRestartingTooMuch
+        expr: rate(kube_pod_container_status_restarts_total[1h]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pod redémarre fréquemment"
+          description: "Le pod {{ $labels.pod }} redémarre {{ $value }} fois par heure"
