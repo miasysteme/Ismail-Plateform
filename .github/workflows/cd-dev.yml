@@ -1,5 +1,5 @@
 # CD Pipeline ISMAIL Platform - Développement
-# Déploiement automatique avec Stack Cloud Afrique (Netlify + Railway)
+# Déploiement automatique avec Stack Cloud Afrique (Netlify + Render)
 
 name: 🚀 Deploy to Development
 

@@ -1,5 +1,5 @@
 # CD Pipeline ISMAIL Platform - Stack Cloud Afrique
-# Déploiement automatique avec Netlify + Railway + Supabase
+# Déploiement automatique avec Netlify + Render + Supabase
 
 name: 🌍 Deploy Africa Stack
 
@@ -145,11 +145,11 @@ jobs:
           name: frontend-coverage
 
   # =====================================================
-  # BUILD ET DÉPLOIEMENT BACKEND (RAILWAY)
+  # BUILD ET DÉPLOIEMENT BACKEND (RENDER)
   # =====================================================
-  
+
   deploy-backend:
-    name: 🚂 Deploy Backend (Railway)
+    name: 🎨 Deploy Backend (Render)
     runs-on: ubuntu-latest
     needs: [pre-deployment-checks]
     if: needs.pre-deployment-checks.outputs.should_deploy == 'true' && needs.pre-deployment-checks.outputs.backend_changed == 'true'
@@ -190,13 +190,28 @@ jobs:
           cd services/${{ matrix.service }}
           docker build -t ${{ matrix.service }}:latest .
       
-      - name: 🚂 Deploy to Railway
-        uses: railway-app/railway@v1
-        with:
-          command: up --service ${{ matrix.service }}
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_ENVIRONMENT: ${{ needs.pre-deployment-checks.outputs.environment }}
+      - name: 🎨 Deploy to Render
+        run: |
+          # Trigger Render deployment via webhook
+          if [[ "${{ matrix.service }}" == "auth-service" ]]; then
+            WEBHOOK_URL="${{ secrets.RENDER_AUTH_SERVICE_WEBHOOK }}"
+          elif [[ "${{ matrix.service }}" == "wallet-service" ]]; then
+            WEBHOOK_URL="${{ secrets.RENDER_WALLET_SERVICE_WEBHOOK }}"
+          fi
+
+          if [[ -n "$WEBHOOK_URL" ]]; then
+            echo "Triggering deployment for ${{ matrix.service }}..."
+            curl -X POST "$WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "branch": "${{ github.ref_name }}",
+                "commit": "${{ github.sha }}",
+                "environment": "${{ needs.pre-deployment-checks.outputs.environment }}"
+              }'
+            echo "Deployment triggered successfully!"
+          else
+            echo "No webhook configured for ${{ matrix.service }}"
+          fi
 
   # =====================================================
   # CONFIGURATION BASE DE DONNÉES (SUPABASE)
@@ -311,7 +326,7 @@ jobs:
             
             **Services Deployed**:
             ${{ needs.deploy-frontend.result == 'success' && '✅ Frontend (Netlify)' || '❌ Frontend' }}
-            ${{ needs.deploy-backend.result == 'success' && '✅ Backend (Railway)' || '❌ Backend' }}
+            ${{ needs.deploy-backend.result == 'success' && '✅ Backend (Render)' || '❌ Backend' }}
             
             **Links**:
             🌐 [Application](${{ needs.pre-deployment-checks.outputs.environment == 'production' && secrets.PROD_BASE_URL || secrets.DEV_BASE_URL }})
@@ -341,10 +356,10 @@ jobs:
             
             Services:
             - Frontend (Netlify): ${{ needs.deploy-frontend.result }}
-            - Backend (Railway): ${{ needs.deploy-backend.result }}
+            - Backend (Render): ${{ needs.deploy-backend.result }}
             - Database (Supabase): ${{ needs.setup-database.result }}
             
             Application: ${{ needs.pre-deployment-checks.outputs.environment == 'production' && secrets.PROD_BASE_URL || secrets.DEV_BASE_URL }}
             
             Workflow: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        if: needs.pre-deployment-checks.outputs.environment == 'production' && secrets.NOTIFICATION_EMAILS != '' && always()
+        if: false # Disabled until email service is configured
