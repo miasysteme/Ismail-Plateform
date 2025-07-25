@@ -1,5 +1,5 @@
 # CD Pipeline ISMAIL Platform - Développement
-# Déploiement automatique sur l'environnement de développement
+# Déploiement automatique avec Stack Cloud Afrique (Netlify + Railway)
 
 name: 🚀 Deploy to Development
 
@@ -11,15 +11,13 @@ on:
       force_deploy:
         description: 'Force deployment even if tests fail'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 env:
   ENVIRONMENT: dev
-  NAMESPACE: ismail-dev
-  REGISTRY: ghcr.io
-  CLUSTER_NAME: ismail-dev-cluster
-  REGION: eu-west-1
+  NODE_VERSION: '20'
+  JAVA_VERSION: '21'
 
 jobs:
   # =====================================================

@@ -1,0 +1,350 @@
+# CD Pipeline ISMAIL Platform - Stack Cloud Afrique
+# Déploiement automatique avec Netlify + Railway + Supabase
+
+name: 🌍 Deploy Africa Stack
+
+on:
+  push:
+    branches: [ develop, main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+        - development
+        - staging
+        - production
+
+env:
+  NODE_VERSION: '20'
+  JAVA_VERSION: '21'
+
+jobs:
+  # =====================================================
+  # VALIDATION PRÉ-DÉPLOIEMENT
+  # =====================================================
+  
+  pre-deployment-checks:
+    name: 🔍 Pre-deployment Checks
+    runs-on: ubuntu-latest
+    
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+      environment: ${{ steps.env.outputs.environment }}
+      frontend_changed: ${{ steps.changes.outputs.frontend }}
+      backend_changed: ${{ steps.changes.outputs.backend }}
+    
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🔍 Detect changes
+        uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+              - 'package.json'
+              - 'package-lock.json'
+            backend:
+              - 'services/**'
+              - 'pom.xml'
+              - '**/pom.xml'
+      
+      - name: 🌍 Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "environment=development" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 🔍 Check deployment conditions
+        id: check
+        run: |
+          # Vérifier le statut du dernier CI
+          if [[ "${{ github.event.inputs.force_deploy }}" == "true" ]]; then
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+            echo "✅ Force deploy requested"
+          elif [[ "${{ steps.changes.outputs.frontend }}" == "true" ]] || [[ "${{ steps.changes.outputs.backend }}" == "true" ]]; then
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+            echo "✅ Changes detected, deployment needed"
+          else
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ No changes detected, skipping deployment"
+          fi
+
+  # =====================================================
+  # BUILD ET DÉPLOIEMENT FRONTEND (NETLIFY)
+  # =====================================================
+  
+  deploy-frontend:
+    name: 🚀 Deploy Frontend (Netlify)
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-checks]
+    if: needs.pre-deployment-checks.outputs.should_deploy == 'true' && needs.pre-deployment-checks.outputs.frontend_changed == 'true'
+    
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: 📦 Install dependencies
+        run: |
+          cd frontend
+          npm ci
+      
+      - name: 🏗️ Build frontend
+        run: |
+          cd frontend
+          npm run build
+        env:
+          REACT_APP_ENVIRONMENT: ${{ needs.pre-deployment-checks.outputs.environment }}
+          REACT_APP_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          REACT_APP_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          REACT_APP_CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          REACT_APP_BASE_URL: ${{ needs.pre-deployment-checks.outputs.environment == 'production' && secrets.PROD_BASE_URL || secrets.DEV_BASE_URL }}
+      
+      - name: 🧪 Run frontend tests
+        run: |
+          cd frontend
+          npm test -- --coverage --watchAll=false
+      
+      - name: 🚀 Deploy to Netlify
+        uses: netlify/actions/cli@master
+        with:
+          args: deploy --dir=frontend/dist --prod=${{ needs.pre-deployment-checks.outputs.environment == 'production' }}
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      
+      - name: 📊 Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: frontend/coverage/lcov.info
+          flags: frontend
+          name: frontend-coverage
+
+  # =====================================================
+  # BUILD ET DÉPLOIEMENT BACKEND (RAILWAY)
+  # =====================================================
+  
+  deploy-backend:
+    name: 🚂 Deploy Backend (Railway)
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-checks]
+    if: needs.pre-deployment-checks.outputs.should_deploy == 'true' && needs.pre-deployment-checks.outputs.backend_changed == 'true'
+    
+    strategy:
+      matrix:
+        service: [auth-service, wallet-service]
+    
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+      
+      - name: 📦 Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
+      
+      - name: 🏗️ Build service
+        run: |
+          cd services/${{ matrix.service }}
+          mvn clean package -DskipTests
+      
+      - name: 🧪 Run service tests
+        run: |
+          cd services/${{ matrix.service }}
+          mvn test
+      
+      - name: 🐳 Build Docker image
+        run: |
+          cd services/${{ matrix.service }}
+          docker build -t ${{ matrix.service }}:latest .
+      
+      - name: 🚂 Deploy to Railway
+        uses: railway-app/railway@v1
+        with:
+          command: up --service ${{ matrix.service }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_ENVIRONMENT: ${{ needs.pre-deployment-checks.outputs.environment }}
+
+  # =====================================================
+  # CONFIGURATION BASE DE DONNÉES (SUPABASE)
+  # =====================================================
+  
+  setup-database:
+    name: 🗄️ Setup Database (Supabase)
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-checks]
+    if: needs.pre-deployment-checks.outputs.should_deploy == 'true'
+    
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: 📦 Install Supabase CLI
+        run: npm install -g @supabase/cli
+      
+      - name: 🔗 Link to Supabase project
+        run: |
+          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      
+      - name: 🗄️ Run database migrations
+        run: |
+          supabase db push
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      
+      - name: 🔧 Deploy functions
+        run: |
+          supabase functions deploy --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+  # =====================================================
+  # TESTS POST-DÉPLOIEMENT
+  # =====================================================
+  
+  post-deployment-tests:
+    name: 🧪 Post-deployment Tests
+    runs-on: ubuntu-latest
+    needs: [deploy-frontend, deploy-backend, setup-database]
+    if: always() && (needs.deploy-frontend.result == 'success' || needs.deploy-backend.result == 'success')
+    
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: 🧪 Install test dependencies
+        run: |
+          npm install -g @playwright/test
+          npx playwright install
+      
+      - name: 🌐 Run E2E tests
+        run: |
+          cd tests/e2e
+          npx playwright test
+        env:
+          BASE_URL: ${{ needs.pre-deployment-checks.outputs.environment == 'production' && secrets.PROD_BASE_URL || secrets.DEV_BASE_URL }}
+      
+      - name: 📊 Upload test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+
+  # =====================================================
+  # NOTIFICATION
+  # =====================================================
+  
+  notify-deployment:
+    name: 📢 Notify Deployment
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-checks, deploy-frontend, deploy-backend, post-deployment-tests]
+    if: always()
+    
+    steps:
+      - name: 📊 Determine status
+        id: status
+        run: |
+          if [[ "${{ needs.post-deployment-tests.result }}" == "success" ]]; then
+            echo "status=✅ SUCCESS" >> $GITHUB_OUTPUT
+            echo "color=3066993" >> $GITHUB_OUTPUT
+          else
+            echo "status=❌ FAILED" >> $GITHUB_OUTPUT
+            echo "color=15158332" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 📢 Discord notification
+        uses: Ilshidur/action-discord@master
+        with:
+          args: |
+            🌍 **ISMAIL Africa Stack Deployment**
+            
+            **Status**: ${{ steps.status.outputs.status }}
+            **Environment**: ${{ needs.pre-deployment-checks.outputs.environment }}
+            **Branch**: ${{ github.ref_name }}
+            **Commit**: ${{ github.sha }}
+            
+            **Services Deployed**:
+            ${{ needs.deploy-frontend.result == 'success' && '✅ Frontend (Netlify)' || '❌ Frontend' }}
+            ${{ needs.deploy-backend.result == 'success' && '✅ Backend (Railway)' || '❌ Backend' }}
+            
+            **Links**:
+            🌐 [Application](${{ needs.pre-deployment-checks.outputs.environment == 'production' && secrets.PROD_BASE_URL || secrets.DEV_BASE_URL }})
+            📊 [Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        if: always()
+      
+      - name: 📧 Email notification (Production only)
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.resend.com
+          server_port: 587
+          username: resend
+          password: ${{ secrets.RESEND_API_KEY }}
+          subject: "🌍 ISMAIL Africa Stack Deployment - ${{ steps.status.outputs.status }}"
+          to: ${{ secrets.NOTIFICATION_EMAILS }}
+          from: deployments@ismail-platform.com
+          body: |
+            ISMAIL Platform Africa Stack Deployment Report
+            
+            Status: ${{ steps.status.outputs.status }}
+            Environment: ${{ needs.pre-deployment-checks.outputs.environment }}
+            Branch: ${{ github.ref_name }}
+            Deployed by: ${{ github.actor }}
+            Time: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+            
+            Services:
+            - Frontend (Netlify): ${{ needs.deploy-frontend.result }}
+            - Backend (Railway): ${{ needs.deploy-backend.result }}
+            - Database (Supabase): ${{ needs.setup-database.result }}
+            
+            Application: ${{ needs.pre-deployment-checks.outputs.environment == 'production' && secrets.PROD_BASE_URL || secrets.DEV_BASE_URL }}
+            
+            Workflow: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        if: needs.pre-deployment-checks.outputs.environment == 'production' && always()

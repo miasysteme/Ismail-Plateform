@@ -2,6 +2,8 @@
 
 API REST Node.js/Express pour la plateforme ISMAIL avec intégration Supabase.
 
+🚀 **Status**: Ready for Railway deployment
+
 ## 🚀 Démarrage Rapide
 
 ### Prérequis
