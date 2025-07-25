@@ -1,0 +1,65 @@
+/* ISMAIL Platform - Design System CSS */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Google Fonts Import */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* CSS Variables - ISMAIL Design System */
+:root {
+  /* Couleurs Primaires */
+  --primary-orange: #FF6B35;
+  --primary-blue: #1E3A8A;
+  --primary-green: #10B981;
+
+  /* Couleurs Secondaires */
+  --secondary-gold: #F59E0B;
+  --secondary-purple: #8B5CF6;
+  --secondary-teal: #14B8A6;
+
+  /* Couleurs Neutres */
+  --neutral-900: #111827;
+  --neutral-700: #374151;
+  --neutral-500: #6B7280;
+  --neutral-300: #D1D5DB;
+  --neutral-100: #F3F4F6;
+  --neutral-50: #F9FAFB;
+
+  /* Couleurs Sémantiques */
+  --success: #10B981;
+  --warning: #F59E0B;
+  --error: #EF4444;
+  --info: #3B82F6;
+
+  /* Typographie */
+  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+
+/* Base Styles */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--neutral-50);
+  color: var(--neutral-900);
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
