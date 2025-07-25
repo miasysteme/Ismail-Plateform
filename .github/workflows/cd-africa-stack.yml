@@ -328,7 +328,7 @@ jobs:
           username: resend
           password: ${{ secrets.RESEND_API_KEY }}
           subject: "🌍 ISMAIL Africa Stack Deployment - ${{ steps.status.outputs.status }}"
-          to: ${{ secrets.NOTIFICATION_EMAILS }}
+          to: ${{ secrets.NOTIFICATION_EMAILS || 'noreply@ismail-platform.com' }}
           from: deployments@ismail-platform.com
           body: |
             ISMAIL Platform Africa Stack Deployment Report
@@ -347,4 +347,4 @@ jobs:
             Application: ${{ needs.pre-deployment-checks.outputs.environment == 'production' && secrets.PROD_BASE_URL || secrets.DEV_BASE_URL }}
             
             Workflow: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        if: needs.pre-deployment-checks.outputs.environment == 'production' && always()
+        if: needs.pre-deployment-checks.outputs.environment == 'production' && secrets.NOTIFICATION_EMAILS != '' && always()
