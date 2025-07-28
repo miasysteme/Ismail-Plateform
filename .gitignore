@@ -373,3 +373,9 @@ cache/
 # Fichiers de développement local
 dev-tools/
 local-setup/
+
+# Fichiers de test temporaires
+test-api.html
+test-api-proxy.html
+start-dev.bat
+start-frontend.ps1

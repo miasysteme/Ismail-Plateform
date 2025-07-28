@@ -1,0 +1,64 @@
+# Render.com Configuration for ISMAIL Platform
+# This file defines the deployment configuration for Render
+
+services:
+  # Backend API Service
+  - type: web
+    name: ismail-platform-api
+    env: node
+    plan: free
+    buildCommand: cd backend && npm install && npm run build
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8080
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: CORS_CREDENTIALS
+        value: "true"
+      - key: SUPABASE_URL
+        fromDatabase:
+          name: ismail-supabase
+          property: connectionString
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: "7d"
+    healthCheckPath: /health
+    
+  # Frontend Web Service
+  - type: web
+    name: ismail-platform-frontend
+    env: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://ismail-platform-api.onrender.com
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+
+# Database (if using Render PostgreSQL)
+databases:
+  - name: ismail-platform-db
+    databaseName: ismail_platform
+    user: ismail_user
+    plan: free
+
+# Background Jobs (if needed)
+# - type: worker
+#   name: ismail-platform-worker
+#   env: node
+#   buildCommand: cd backend && npm install
+#   startCommand: cd backend && npm run worker
+#   envVars:
+#     - key: NODE_ENV
+#       value: production
